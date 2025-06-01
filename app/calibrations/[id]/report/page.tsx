@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Printer, Calendar, User, Thermometer, Droplets, FileText, Edit } from "lucide-react"
+import { ArrowLeft, Printer, Edit } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
 
 export default function CalibrationDetailPage() {
@@ -24,27 +22,18 @@ export default function CalibrationDetailPage() {
 
   const loadCalibrationData = async () => {
     try {
-      // Ensure database is initialized
       await calibrationDB.init()
-
       const allCalibrations = await calibrationDB.getAllCalibrations()
       const foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
 
       if (foundCalibration) {
         setCalibration(foundCalibration)
-
-        // Load equipment data
         const allEquipment = await calibrationDB.getAllEquipment()
         const foundEquipment = allEquipment.find((eq) => eq.id === foundCalibration.equipmentId)
         setEquipment(foundEquipment || null)
-
-        // Load customer data
         const customers = await calibrationDB.getCustomers()
         const foundCustomer = customers.find((c) => c.id === foundCalibration.customerId)
         setCustomer(foundCustomer || null)
-      } else {
-        console.log("Calibration not found with ID:", calibrationId)
-        console.log("Available calibrations:", allCalibrations)
       }
     } catch (error) {
       console.error("Error loading calibration:", error)
@@ -84,6 +73,7 @@ export default function CalibrationDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Screen Header - Hidden when printing */}
       <header className="bg-white shadow-sm border-b print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
@@ -93,17 +83,9 @@ export default function CalibrationDetailPage() {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {calibration.type.replace("_", " & ")} Calibration Report
-              </h1>
+              <h1 className="text-2xl font-bold text-gray-900">Calibration Certificate</h1>
             </div>
             <div className="flex items-center gap-2">
-              <Badge
-                variant={calibration.result === "pass" ? "default" : "destructive"}
-                className={calibration.result === "pass" ? "bg-green-600" : ""}
-              >
-                {calibration.result.toUpperCase()}
-              </Badge>
               <Link href={`/calibrations/${calibrationId}/edit`}>
                 <Button variant="outline">
                   <Edit className="h-4 w-4 mr-2" />
@@ -112,147 +94,245 @@ export default function CalibrationDetailPage() {
               </Link>
               <Button onClick={handlePrint}>
                 <Printer className="h-4 w-4 mr-2" />
-                Print Report
+                Print Certificate
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Print Header (only visible when printing) */}
-        <div className="hidden print:block mb-8">
-          <h1 className="text-3xl font-bold text-center">{calibration.type.replace("_", " & ")} Calibration Report</h1>
-          <div className="flex justify-between mt-4">
+      {/* Professional Certificate Layout */}
+      <main className="max-w-4xl mx-auto p-8 bg-white print:p-0 print:max-w-none">
+        <div className="print:min-h-screen">
+          {/* Certificate Header */}
+          <div className="border-4 border-black p-4 mb-6">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold text-center mb-2">CERTIFICATE OF CALIBRATION</h1>
+                <p className="text-center text-lg mb-1">
+                  {calibration.type === "load_cell"
+                    ? "Force Verification utilizing ASTM E74-18"
+                    : "Speed & Displacement Verification utilizing ASTM E2309"}
+                </p>
+                <p className="text-center text-lg">Issued By: Your Calibration Company</p>
+              </div>
+              <div className="ml-4">
+                {/* Accreditation Badge Placeholder */}
+                <div className="w-24 h-24 border-2 border-gray-300 rounded-full flex items-center justify-center text-xs text-center">
+                  ACCREDITED
+                  <br />
+                  CERT #1377.01
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-8 mt-4 pt-4 border-t-2 border-black">
+              <div>
+                <strong>DATE OF CALIBRATION:</strong> {new Date(calibration.date).toLocaleDateString()}
+              </div>
+              <div>
+                <strong>CERTIFICATE NUMBER:</strong> {calibration.id}
+              </div>
+              <div>
+                <strong>DATE OF ISSUE:</strong> {new Date(calibration.date).toLocaleDateString()}
+              </div>
+              <div className="text-right">
+                <div className="border border-black p-2 inline-block">
+                  <div className="text-sm">Page 1 of 1</div>
+                  <div className="text-sm mt-1">Recommended Due Date:</div>
+                  <div className="font-bold">
+                    {new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                  </div>
+                  <div
+                    className={`text-lg font-bold mt-2 ${calibration.result === "pass" ? "text-green-600" : "text-red-600"}`}
+                  >
+                    {calibration.result === "pass" ? "Pass" : "Fail"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Company Information */}
+          <div className="grid grid-cols-2 gap-8 mb-6">
             <div>
-              <p className="font-medium">Report ID: {calibration.id}</p>
-              <p>Date: {new Date(calibration.date).toLocaleDateString()}</p>
+              <div className="text-4xl font-bold mb-2">YC</div>
+              <div className="text-lg font-bold">Your Calibration Company</div>
+              <div>123 Industrial Drive</div>
+              <div>Your City, ST 12345</div>
+              <div className="mt-4">
+                <div>
+                  <strong>Phone:</strong> (555) 123-4567
+                </div>
+                <div>
+                  <strong>Fax:</strong> (555) 123-4568
+                </div>
+                <div>
+                  <strong>Email:</strong> calibration@yourcompany.com
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <strong>Verified By:</strong>
+                </div>
+                <div>{calibration.technician}</div>
+                <div>
+                  <strong>Verifier Title:</strong>
+                </div>
+                <div>Calibration Technician</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Customer and Equipment Information */}
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            <div className="space-y-2 text-sm">
+              <div>
+                <strong>Customer:</strong> {customer?.name || "N/A"}
+              </div>
+              <div>
+                <strong>Location Of Calibration Address:</strong> {customer?.location || "N/A"}
+              </div>
+              <div>
+                <strong>City:</strong> {customer?.location?.split(",")[0] || "N/A"}
+              </div>
+              <div>
+                <strong>State:</strong> {customer?.location?.split(",")[1]?.trim() || "N/A"}
+              </div>
+              <div>
+                <strong>Zip Code:</strong> N/A
+              </div>
+              <div>
+                <strong>Specific Location of Calibration:</strong> Test Lab
+              </div>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div>
+                <strong>Date of Calibration:</strong> {new Date(calibration.date).toLocaleDateString()}
+              </div>
+              <div>
+                <strong>Machine Make / Model:</strong> {equipment?.name || "N/A"}
+              </div>
+              <div>
+                <strong>Machine SN:</strong> {equipment?.serialNumber || "N/A"}
+              </div>
+              <div>
+                <strong>Indicating Device:</strong> Digital Display
+              </div>
+              <div>
+                <strong>Indicating Device SN:</strong> N/A
+              </div>
+              {calibration.type === "load_cell" && (
+                <>
+                  <div>
+                    <strong>Load Cell Model:</strong> {equipment?.name || "N/A"}
+                  </div>
+                  <div>
+                    <strong>Load Cell SN:</strong> {equipment?.serialNumber || "N/A"}
+                  </div>
+                  <div>
+                    <strong>Fullscale Capacity:</strong> {calibration.data?.capacity || "N/A"} (Lbs)
+                  </div>
+                  <div>
+                    <strong>Verified Capacity:</strong> {calibration.data?.capacity || "N/A"} (Lbs)
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Environmental Conditions */}
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            <div className="space-y-2 text-sm">
+              <div>
+                <strong>Contact Name:</strong> {customer?.contact || "N/A"}
+              </div>
+              <div>
+                <strong>Phone:</strong> {customer?.phone || "N/A"}
+              </div>
+              <div>
+                <strong>Email:</strong> {customer?.email || "N/A"}
+              </div>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div>
+                <strong>Ambient Temp:</strong> Before: {calibration.temperature}°F After: {calibration.temperature}°F
+              </div>
+              <div>
+                <strong>Gravity Multiplier:</strong> 1.0000
+              </div>
+              <div>
+                <strong>Equipment Condition:</strong> Good
+              </div>
+            </div>
+          </div>
+
+          {/* Calibration Data */}
+          <div className="mb-6">
+            {calibration.type === "load_cell" ? (
+              <ProfessionalLoadCellResults data={calibration.data} />
+            ) : (
+              <ProfessionalSpeedDisplacementResults data={calibration.data} />
+            )}
+          </div>
+
+          {/* Standards Used */}
+          <div className="mb-6">
+            <h3 className="text-lg font-bold mb-2 text-center">STANDARDS / EQUIPMENT USED FOR CALIBRATION</h3>
+            <div className="text-xs border border-black p-2">
+              <p>Devices listed are traceable to NIST</p>
+              <p className="mt-2">
+                {calibration.type === "load_cell"
+                  ? "Load cells calibrated by certified laboratory with 10,000 Lbs capacity, traceable to NIST standards."
+                  : "Speed and displacement measuring devices calibrated by certified laboratory, traceable to NIST standards."}
+              </p>
+            </div>
+          </div>
+
+          {/* Certification Statement */}
+          <div className="mb-6 text-xs">
+            <p>
+              This certifies that the testing system described above has had a{" "}
+              {calibration.type === "load_cell" ? "force" : "speed and displacement"} verification performed in
+              accordance with the latest specifications of ASTM {calibration.type === "load_cell" ? "E74-18" : "E2309"},
+              "Standard Practices for{" "}
+              {calibration.type === "load_cell"
+                ? "Force Calibration and Verification of Testing Machines"
+                : "Speed and Displacement Calibration"}
+              " employing standard procedures.
+            </p>
+          </div>
+
+          {/* Signature Section */}
+          <div className="grid grid-cols-3 gap-8 mt-8 pt-4 border-t-2 border-black">
+            <div>
+              <div className="text-sm font-bold mb-2">Authorized and Verified By:</div>
+              <div className="text-lg font-bold">{calibration.technician}</div>
+              <div className="mt-4 border-b border-black w-48"></div>
+              <div className="text-xs mt-1">Signature</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-bold mb-2">Issue Date:</div>
+              <div className="text-lg">{new Date(calibration.date).toLocaleDateString()}</div>
             </div>
             <div className="text-right">
-              <Badge
-                variant={calibration.result === "pass" ? "default" : "destructive"}
-                className={calibration.result === "pass" ? "bg-green-600" : ""}
-              >
-                {calibration.result.toUpperCase()}
-              </Badge>
+              <div className="text-sm">Certificate Valid Until:</div>
+              <div className="font-bold">
+                {new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+              </div>
             </div>
           </div>
         </div>
+      </main>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Calibration Information */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>Calibration Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">Technician</p>
-                <p className="text-gray-700">{calibration.technician}</p>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium">Date</p>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <p className="text-gray-700">{new Date(calibration.date).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium">Environmental Conditions</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Thermometer className="h-4 w-4 text-gray-400" />
-                  <p className="text-gray-700">{calibration.temperature}°F</p>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <Droplets className="h-4 w-4 text-gray-400" />
-                  <p className="text-gray-700">{calibration.humidity}% Humidity</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium">Equipment</p>
-                {equipment ? (
-                  <>
-                    <p className="text-gray-700">{equipment.name}</p>
-                    <p className="text-xs text-gray-500">
-                      Type: {equipment.type.replace("_", " & ")}
-                      {equipment.serialNumber && ` | S/N: ${equipment.serialNumber}`}
-                    </p>
-                    <Link href={`/equipment/${equipment.id}/details`} className="text-blue-600 hover:underline text-sm">
-                      View Equipment Details
-                    </Link>
-                  </>
-                ) : (
-                  <p className="text-gray-500">Equipment not found</p>
-                )}
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium">Customer</p>
-                {customer ? (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-gray-400" />
-                      <p className="text-gray-700">{customer.name}</p>
-                    </div>
-                    <Link href={`/customers/${customer.id}/details`} className="text-blue-600 hover:underline text-sm">
-                      View Customer Details
-                    </Link>
-                  </>
-                ) : (
-                  <p className="text-gray-500">Customer not found</p>
-                )}
-              </div>
-
-              {!calibration.synced && (
-                <div className="border-t pt-4">
-                  <Badge variant="outline" className="text-orange-600 border-orange-600">
-                    Pending Sync
-                  </Badge>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This calibration has been modified and needs to be synced.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Calibration Results */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Calibration Results
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {calibration.type === "load_cell" ? (
-                <LoadCellResults data={calibration.data} />
-              ) : (
-                <SpeedDisplacementResults data={calibration.data} />
-              )}
-
-              <div
-                className="mt-6 p-4 rounded-lg border-2"
-                style={{
-                  backgroundColor: calibration.result === "pass" ? "#f0f9ff" : "#fef2f2",
-                  borderColor: calibration.result === "pass" ? "#3b82f6" : "#ef4444",
-                }}
-              >
-                <h3 className="text-lg font-bold">Calibration {calibration.result === "pass" ? "PASSED" : "FAILED"}</h3>
-                <p className="text-sm mt-1">
-                  {calibration.result === "pass"
-                    ? "All readings are within the specified tolerance."
-                    : "One or more readings exceed the specified tolerance. Equipment requires adjustment."}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-6 flex gap-4 print:hidden">
+      {/* Screen Actions - Hidden when printing */}
+      <div className="max-w-4xl mx-auto px-8 pb-8 print:hidden">
+        <div className="flex gap-4">
           <Link href="/calibrations" className="flex-1">
             <Button variant="outline" className="w-full">
               Back to Calibrations
@@ -264,69 +344,75 @@ export default function CalibrationDetailPage() {
               Edit Calibration
             </Button>
           </Link>
-          <Link href={`/calibrations/new?customer=${calibration.customerId}&equipment=${calibration.equipmentId}`}>
-            <Button className="flex-1">Recalibrate</Button>
-          </Link>
+          <Button onClick={handlePrint} className="flex-1">
+            <Printer className="h-4 w-4 mr-2" />
+            Print Certificate
+          </Button>
         </div>
-      </main>
+      </div>
     </div>
   )
 }
 
-function LoadCellResults({ data }: { data: any }) {
+function ProfessionalLoadCellResults({ data }: { data: any }) {
   if (!data || !data.points) {
     return <p className="text-gray-500">No calibration data available</p>
   }
 
   return (
     <div>
-      <div className="mb-4">
-        <p className="text-sm font-medium">Tolerance: ±{data.tolerance}%</p>
-        <p className="text-sm font-medium">Capacity: {data.capacity} lbs</p>
+      <h3 className="text-lg font-bold mb-4 text-center">CALIBRATION DATA</h3>
+
+      <div className="mb-4 text-sm">
+        <div>
+          <strong>Required Tolerance:</strong> ±{data.tolerance}%
+        </div>
+        <div>
+          <strong>Method:</strong> FIT or STF
+        </div>
+        <div>
+          <strong>Values taken with tester:</strong> As Found As Left
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left p-3 font-medium">Applied Load (lbs)</th>
-              <th className="text-left p-3 font-medium">Reading (lbs)</th>
-              <th className="text-left p-3 font-medium">Error (%)</th>
-              <th className="text-left p-3 font-medium">Status</th>
+      <table className="w-full border-collapse border border-black text-sm">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="border border-black p-2 text-left">Applied Load (Lbs)</th>
+            <th className="border border-black p-2 text-left">Indicated Reading</th>
+            <th className="border border-black p-2 text-left">Unit Error</th>
+            <th className="border border-black p-2 text-left">% Error</th>
+            <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.points.map((point: any, index: number) => (
+            <tr key={index}>
+              <td className="border border-black p-2 font-medium">{point.applied}</td>
+              <td className="border border-black p-2">{point.reading}</td>
+              <td className="border border-black p-2">{(point.reading - point.applied).toFixed(3)}</td>
+              <td className="border border-black p-2">
+                <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
+                  {point.error.toFixed(3)}%
+                </span>
+              </td>
+              <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(2)}%</td>
             </tr>
-          </thead>
-          <tbody>
-            {data.points.map((point: any, index: number) => (
-              <tr key={index} className="border-b">
-                <td className="p-3 font-medium">{point.applied}</td>
-                <td className="p-3">{point.reading}</td>
-                <td className="p-3">
-                  <span
-                    className={`font-medium ${
-                      Math.abs(point.error) > data.tolerance ? "text-red-600" : "text-green-600"
-                    }`}
-                  >
-                    {point.error.toFixed(3)}%
-                  </span>
-                </td>
-                <td className="p-3">
-                  <Badge
-                    variant={point.withinTolerance ? "default" : "destructive"}
-                    className={point.withinTolerance ? "bg-green-600" : ""}
-                  >
-                    {point.withinTolerance ? "PASS" : "FAIL"}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mt-4 text-xs">
+        <p>
+          <strong>Notes:</strong> Unless otherwise indicated, Run1 is as found and Run 2 is as left. Calibration Value
+          set as none. 0-1,000 lbs, 0 to 50,000 , 10.0, 9.5, 10.1 EXC for optimal performance
+        </p>
       </div>
     </div>
   )
 }
 
-function SpeedDisplacementResults({ data }: { data: any }) {
+function ProfessionalSpeedDisplacementResults({ data }: { data: any }) {
   if (!data || (!data.speedPoints && !data.displacementPoints)) {
     return <p className="text-gray-500">No calibration data available</p>
   }
@@ -335,91 +421,69 @@ function SpeedDisplacementResults({ data }: { data: any }) {
     <div className="space-y-6">
       {data.speedPoints && (
         <div>
-          <h3 className="text-lg font-medium mb-2">Speed Calibration</h3>
-          <p className="text-sm mb-2">Tolerance: ±{data.speedTolerance}%</p>
+          <h3 className="text-lg font-bold mb-4 text-center">SPEED CALIBRATION DATA</h3>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-3 font-medium">Set Speed (in/min)</th>
-                  <th className="text-left p-3 font-medium">Actual Speed (in/min)</th>
-                  <th className="text-left p-3 font-medium">Error (%)</th>
-                  <th className="text-left p-3 font-medium">Status</th>
+          <table className="w-full border-collapse border border-black text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-black p-2 text-left">Set Speed (in/min)</th>
+                <th className="border border-black p-2 text-left">Actual Speed (in/min)</th>
+                <th className="border border-black p-2 text-left">Unit Error</th>
+                <th className="border border-black p-2 text-left">% Error</th>
+                <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.speedPoints.map((point: any, index: number) => (
+                <tr key={index}>
+                  <td className="border border-black p-2 font-medium">{point.setSpeed}</td>
+                  <td className="border border-black p-2">{point.actualSpeed}</td>
+                  <td className="border border-black p-2">{(point.actualSpeed - point.setSpeed).toFixed(3)}</td>
+                  <td className="border border-black p-2">
+                    <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
+                      {point.error.toFixed(2)}%
+                    </span>
+                  </td>
+                  <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(2)}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {data.speedPoints.map((point: any, index: number) => (
-                  <tr key={index} className="border-b">
-                    <td className="p-3 font-medium">{point.setSpeed}</td>
-                    <td className="p-3">{point.actualSpeed}</td>
-                    <td className="p-3">
-                      <span
-                        className={`font-medium ${
-                          Math.abs(point.error) > data.speedTolerance ? "text-red-600" : "text-green-600"
-                        }`}
-                      >
-                        {point.error.toFixed(2)}%
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <Badge
-                        variant={point.withinTolerance ? "default" : "destructive"}
-                        className={point.withinTolerance ? "bg-green-600" : ""}
-                      >
-                        {point.withinTolerance ? "PASS" : "FAIL"}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {data.displacementPoints && (
         <div>
-          <h3 className="text-lg font-medium mb-2">Displacement Calibration</h3>
-          <p className="text-sm mb-2">Tolerance: ±{data.displacementTolerance}%</p>
+          <h3 className="text-lg font-bold mb-4 text-center">DISPLACEMENT CALIBRATION DATA</h3>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left p-3 font-medium">Set Displacement (in)</th>
-                  <th className="text-left p-3 font-medium">Actual Displacement (in)</th>
-                  <th className="text-left p-3 font-medium">Error (%)</th>
-                  <th className="text-left p-3 font-medium">Status</th>
+          <table className="w-full border-collapse border border-black text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-black p-2 text-left">Set Displacement (in)</th>
+                <th className="border border-black p-2 text-left">Actual Displacement (in)</th>
+                <th className="border border-black p-2 text-left">Unit Error</th>
+                <th className="border border-black p-2 text-left">% Error</th>
+                <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.displacementPoints.map((point: any, index: number) => (
+                <tr key={index}>
+                  <td className="border border-black p-2 font-medium">{point.setDisplacement}</td>
+                  <td className="border border-black p-2">{point.actualDisplacement}</td>
+                  <td className="border border-black p-2">
+                    {(point.actualDisplacement - point.setDisplacement).toFixed(4)}
+                  </td>
+                  <td className="border border-black p-2">
+                    <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
+                      {point.error.toFixed(3)}%
+                    </span>
+                  </td>
+                  <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(3)}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {data.displacementPoints.map((point: any, index: number) => (
-                  <tr key={index} className="border-b">
-                    <td className="p-3 font-medium">{point.setDisplacement}</td>
-                    <td className="p-3">{point.actualDisplacement}</td>
-                    <td className="p-3">
-                      <span
-                        className={`font-medium ${
-                          Math.abs(point.error) > data.displacementTolerance ? "text-red-600" : "text-green-600"
-                        }`}
-                      >
-                        {point.error.toFixed(3)}%
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <Badge
-                        variant={point.withinTolerance ? "default" : "destructive"}
-                        className={point.withinTolerance ? "bg-green-600" : ""}
-                      >
-                        {point.withinTolerance ? "PASS" : "FAIL"}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

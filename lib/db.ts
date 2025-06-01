@@ -736,3 +736,6 @@ if (typeof window !== "undefined") {
     })
     .catch(console.error)
 }
+
+// Add this line to export calibrationDB as db as well
+export const db = calibrationDB

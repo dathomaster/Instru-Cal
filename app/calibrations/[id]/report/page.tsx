@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Printer, Edit } from "lucide-react"
@@ -39,12 +39,15 @@ if (typeof document !== "undefined") {
 
 export default function CalibrationDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const calibrationId = params.id as string
+  const shouldPrint = searchParams.get("print") === "true"
 
   const [calibration, setCalibration] = useState<Calibration | null>(null)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadCalibrationData()
@@ -52,56 +55,98 @@ export default function CalibrationDetailPage() {
 
   // Auto-print if print parameter is present
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get("print") === "true" && !loading && calibration) {
+    if (shouldPrint && !loading && calibration && !error) {
+      console.log("🖨️ Auto-print triggered")
       // Small delay to ensure the page is fully rendered
       setTimeout(() => {
+        console.log("🖨️ Executing print...")
         window.print()
         // Remove the print parameter from URL after printing
         const newUrl = window.location.pathname
         window.history.replaceState({}, "", newUrl)
-      }, 500)
+      }, 1500)
     }
-  }, [loading, calibration])
+  }, [loading, calibration, error, shouldPrint])
 
   const loadCalibrationData = async () => {
     try {
+      console.log("🔍 Loading calibration data for ID:", calibrationId)
+      setLoading(true)
+      setError(null)
+
       // Ensure database is properly initialized
       await calibrationDB.init()
 
-      // Add a small delay to ensure any recent writes are available
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Try to get the calibration directly first
+      let foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
 
-      const allCalibrations = await calibrationDB.getAllCalibrations()
-      console.log("Looking for calibration ID:", calibrationId)
-      console.log(
-        "Available calibrations:",
-        allCalibrations.map((c) => c.id),
-      )
+      if (!foundCalibration) {
+        console.log("⏳ Calibration not found immediately, waiting and retrying...")
+        // Wait a bit longer and try again
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
+      }
 
-      const foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
+      if (!foundCalibration) {
+        console.log("🔍 Still not found, checking all calibrations...")
+        // Last resort: check all calibrations
+        const allCalibrations = await calibrationDB.getAllCalibrations()
+        console.log(
+          "Available calibrations:",
+          allCalibrations.map((c) => ({
+            id: c.id,
+            date: c.date,
+            type: c.type,
+            technician: c.technician,
+            reportNumber: c.data?.reportNumber,
+          })),
+        )
+        foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
+      }
 
       if (foundCalibration) {
+        console.log("✅ Found calibration:", {
+          id: foundCalibration.id,
+          reportNumber: foundCalibration.data?.reportNumber,
+          technician: foundCalibration.technician,
+        })
         setCalibration(foundCalibration)
-        const allEquipment = await calibrationDB.getAllEquipment()
+
+        // Load related data
+        const [allEquipment, allCustomers] = await Promise.all([
+          calibrationDB.getAllEquipment(),
+          calibrationDB.getCustomers(),
+        ])
+
         const foundEquipment = allEquipment.find((eq) => eq.id === foundCalibration.equipmentId)
+        const foundCustomer = allCustomers.find((c) => c.id === foundCalibration.customerId)
+
         setEquipment(foundEquipment || null)
-        const customers = await calibrationDB.getCustomers()
-        const foundCustomer = customers.find((c) => c.id === foundCalibration.customerId)
         setCustomer(foundCustomer || null)
+
+        if (!foundEquipment) {
+          console.warn("⚠️ Equipment not found for ID:", foundCalibration.equipmentId)
+        }
+        if (!foundCustomer) {
+          console.warn("⚠️ Customer not found for ID:", foundCalibration.customerId)
+        }
       } else {
-        console.error("Calibration not found with ID:", calibrationId)
+        console.error("❌ Calibration not found with ID:", calibrationId)
+        setError(`Calibration with ID "${calibrationId}" not found.`)
       }
     } catch (error) {
-      console.error("Error loading calibration:", error)
+      console.error("❌ Error loading calibration:", error)
+      setError("Error loading calibration data. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
   const handlePrint = () => {
+    console.log("🖨️ Manual print triggered")
     // Ensure all images and content are loaded before printing
     setTimeout(() => {
+      console.log("🖨️ Executing manual print...")
       window.print()
     }, 100)
   }
@@ -112,17 +157,24 @@ export default function CalibrationDetailPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading calibration report...</p>
+          <p className="mt-2 text-sm text-gray-500">ID: {calibrationId}</p>
         </div>
       </div>
     )
   }
 
-  if (!calibration) {
+  if (error || !calibration) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Calibration Report Not Found</h2>
-          <p className="text-gray-600 mb-4">The calibration report with ID "{calibrationId}" could not be found.</p>
+          <p className="text-gray-600 mb-4">
+            {error || `The calibration report with ID "${calibrationId}" could not be found.`}
+          </p>
+          <div className="space-y-2 mb-4">
+            <p className="text-sm text-gray-500">Calibration ID: {calibrationId}</p>
+            <p className="text-sm text-gray-500">Please check the ID and try again.</p>
+          </div>
           <Link href="/calibrations">
             <Button>Back to Calibrations</Button>
           </Link>
@@ -143,7 +195,12 @@ export default function CalibrationDetailPage() {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
-              <h1 className="text-2xl font-bold text-gray-900">Calibration Certificate</h1>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Calibration Certificate</h1>
+                {calibration.data?.reportNumber && (
+                  <p className="text-sm text-gray-600">Report #: {calibration.data.reportNumber}</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Link href={`/calibrations/${calibrationId}/edit`}>
@@ -191,7 +248,7 @@ export default function CalibrationDetailPage() {
                 <strong>DATE OF CALIBRATION:</strong> {new Date(calibration.date).toLocaleDateString()}
               </div>
               <div>
-                <strong>CERTIFICATE NUMBER:</strong> {calibration.id}
+                <strong>CERTIFICATE NUMBER:</strong> {calibration.data?.reportNumber || calibration.id}
               </div>
               <div>
                 <strong>DATE OF ISSUE:</strong> {new Date(calibration.date).toLocaleDateString()}
@@ -321,10 +378,11 @@ export default function CalibrationDetailPage() {
 
             <div className="space-y-2 text-sm">
               <div>
-                <strong>Ambient Temp:</strong> Before: {calibration.temperature}°F After: {calibration.temperature}°F
+                <strong>Ambient Temp:</strong> Before: {calibration.data?.tempBefore || calibration.temperature}°F
+                After: {calibration.data?.tempAfter || calibration.temperature}°F
               </div>
               <div>
-                <strong>Gravity Multiplier:</strong> 1.0000
+                <strong>Gravity Multiplier:</strong> {calibration.data?.gravityMultiplier || "1.0000"}
               </div>
               <div>
                 <strong>Equipment Condition:</strong> Good
@@ -415,9 +473,17 @@ export default function CalibrationDetailPage() {
 }
 
 function ProfessionalLoadCellResults({ data }: { data: any }) {
-  if (!data || !data.points) {
+  if (!data || !data.tensionRun1) {
     return <p className="text-gray-500">No calibration data available</p>
   }
+
+  // Combine all data points from all runs for display
+  const allPoints = [
+    ...(data.tensionRun1 || []).map((p: any, i: number) => ({ ...p, run: "Tension Run 1", index: i })),
+    ...(data.tensionRun2 || []).map((p: any, i: number) => ({ ...p, run: "Tension Run 2", index: i })),
+    ...(data.compressionRun1 || []).map((p: any, i: number) => ({ ...p, run: "Compression Run 1", index: i })),
+    ...(data.compressionRun2 || []).map((p: any, i: number) => ({ ...p, run: "Compression Run 2", index: i })),
+  ].filter((p) => p.appliedLoad > 0) // Only show non-zero points
 
   return (
     <div>
@@ -428,7 +494,7 @@ function ProfessionalLoadCellResults({ data }: { data: any }) {
           <strong>Required Tolerance:</strong> ±{data.tolerance}%
         </div>
         <div>
-          <strong>Method:</strong> FIT or STF
+          <strong>Method:</strong> Follow-the-Force (FTF)
         </div>
         <div>
           <strong>Values taken with tester:</strong> As Found As Left
@@ -438,25 +504,29 @@ function ProfessionalLoadCellResults({ data }: { data: any }) {
       <table className="w-full border-collapse border border-black text-sm">
         <thead>
           <tr className="bg-gray-100">
+            <th className="border border-black p-2 text-left">Run</th>
             <th className="border border-black p-2 text-left">Applied Load (Lbs)</th>
             <th className="border border-black p-2 text-left">Indicated Reading</th>
             <th className="border border-black p-2 text-left">Unit Error</th>
             <th className="border border-black p-2 text-left">% Error</th>
-            <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
+            <th className="border border-black p-2 text-left">Within Tolerance</th>
           </tr>
         </thead>
         <tbody>
-          {data.points.map((point: any, index: number) => (
+          {allPoints.slice(0, 20).map((point: any, index: number) => (
             <tr key={index}>
-              <td className="border border-black p-2 font-medium">{point.applied}</td>
-              <td className="border border-black p-2">{point.reading}</td>
-              <td className="border border-black p-2">{(point.reading - point.applied).toFixed(3)}</td>
+              <td className="border border-black p-2 text-xs">{point.run}</td>
+              <td className="border border-black p-2 font-medium">{point.appliedOverride || point.appliedLoad}</td>
+              <td className="border border-black p-2">{point.unitUnderTest}</td>
+              <td className="border border-black p-2">{point.unitError.toFixed(4)}</td>
               <td className="border border-black p-2">
-                <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
-                  {point.error.toFixed(3)}%
+                <span className={Math.abs(point.runError) <= data.tolerance ? "text-green-600" : "text-red-600"}>
+                  {point.runError.toFixed(3)}%
                 </span>
               </td>
-              <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(2)}%</td>
+              <td className="border border-black p-2 text-center">
+                {Math.abs(point.runError) <= data.tolerance ? "✓" : "✗"}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -464,8 +534,8 @@ function ProfessionalLoadCellResults({ data }: { data: any }) {
 
       <div className="mt-4 text-xs">
         <p>
-          <strong>Notes:</strong> Unless otherwise indicated, Run1 is as found and Run 2 is as left. Calibration Value
-          set as none. 0-1,000 lbs, 0 to 50,000 , 10.0, 9.5, 10.1 EXC for optimal performance
+          <strong>Notes:</strong> Calibration performed using Follow-the-Force method. All readings taken at ambient
+          temperature. Maximum error observed: {Math.max(...allPoints.map((p) => Math.abs(p.runError))).toFixed(3)}%
         </p>
       </div>
     </div>

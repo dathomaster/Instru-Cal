@@ -74,10 +74,12 @@ export default function EditCalibrationPage() {
   const loadCalibration = async () => {
     try {
       await calibrationDB.init()
-      const allCalibrations = await calibrationDB.getAllCalibrations()
-      const foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
+      const foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
 
       if (foundCalibration) {
+        console.log("📋 Loading calibration for edit:", foundCalibration.id)
+        console.log("📊 Calibration data structure:", foundCalibration.data)
+
         setCalibration(foundCalibration)
 
         // Set basic calibration data
@@ -88,20 +90,101 @@ export default function EditCalibrationPage() {
           humidity: foundCalibration.humidity,
         })
 
-        // Set type-specific data
+        // Set type-specific data based on calibration type
         if (foundCalibration.type === "load_cell") {
-          setLoadCellPoints(foundCalibration.data.points || [])
+          // Handle load cell data structure
+          if (foundCalibration.data.points) {
+            // Legacy format - simple points array
+            setLoadCellPoints(foundCalibration.data.points || [])
+          } else {
+            // New format - separate tension/compression runs
+            const allPoints = [
+              ...(foundCalibration.data.tensionRun1 || []),
+              ...(foundCalibration.data.tensionRun2 || []),
+              ...(foundCalibration.data.compressionRun1 || []),
+              ...(foundCalibration.data.compressionRun2 || []),
+            ].map((point) => ({
+              applied: point.appliedLoad || point.applied || 0,
+              reading: point.unitUnderTest || point.reading || 0,
+              error: point.runError || point.error || 0,
+              withinTolerance: Math.abs(point.runError || point.error || 0) <= (foundCalibration.data.tolerance || 0.1),
+            }))
+
+            if (allPoints.length > 0) {
+              setLoadCellPoints(allPoints)
+            } else {
+              // Create default points if none exist
+              setLoadCellPoints([
+                { applied: 0, reading: 0, error: 0, withinTolerance: true },
+                { applied: 100, reading: 0, error: 0, withinTolerance: true },
+                { applied: 250, reading: 0, error: 0, withinTolerance: true },
+                { applied: 500, reading: 0, error: 0, withinTolerance: true },
+              ])
+            }
+          }
+
           setLoadCellTolerance(foundCalibration.data.tolerance || 0.1)
           setLoadCellCapacity(foundCalibration.data.capacity || 1000)
         } else if (foundCalibration.type === "speed_displacement") {
-          setSpeedPoints(foundCalibration.data.speedPoints || [])
-          setDisplacementPoints(foundCalibration.data.displacementPoints || [])
+          // Handle speed/displacement data
+          if (foundCalibration.data.speedPoints && foundCalibration.data.displacementPoints) {
+            // Legacy format
+            setSpeedPoints(foundCalibration.data.speedPoints || [])
+            setDisplacementPoints(foundCalibration.data.displacementPoints || [])
+          } else {
+            // New format - convert from runs
+            const speedData = [
+              ...(foundCalibration.data.speedUpRun1 || []),
+              ...(foundCalibration.data.speedDownRun1 || []),
+            ].map((point) => ({
+              setSpeed: point.setSpeed || 0,
+              actualSpeed: point.actualSpeed || 0,
+              error: point.percentError || 0,
+              withinTolerance: Math.abs(point.percentError || 0) <= (foundCalibration.data.speedTolerance || 2.0),
+            }))
+
+            const displacementData = [
+              ...(foundCalibration.data.displacementUpRun1 || []),
+              ...(foundCalibration.data.displacementDownRun1 || []),
+            ].map((point) => ({
+              setDisplacement: point.setDisplacement || 0,
+              actualDisplacement: point.actualDisplacement || 0,
+              error: point.error || 0,
+              withinTolerance:
+                Math.abs(point.percentError || 0) <= (foundCalibration.data.displacementTolerance || 1.0),
+            }))
+
+            setSpeedPoints(
+              speedData.length > 0
+                ? speedData
+                : [
+                    { setSpeed: 0.1, actualSpeed: 0, error: 0, withinTolerance: true },
+                    { setSpeed: 1.0, actualSpeed: 0, error: 0, withinTolerance: true },
+                    { setSpeed: 5.0, actualSpeed: 0, error: 0, withinTolerance: true },
+                  ],
+            )
+
+            setDisplacementPoints(
+              displacementData.length > 0
+                ? displacementData
+                : [
+                    { setDisplacement: 1.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+                    { setDisplacement: 10.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+                    { setDisplacement: 25.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+                  ],
+            )
+          }
+
           setSpeedTolerance(foundCalibration.data.speedTolerance || 2.0)
           setDisplacementTolerance(foundCalibration.data.displacementTolerance || 1.0)
         }
+
+        console.log("✅ Calibration data loaded successfully")
+      } else {
+        console.error("❌ Calibration not found with ID:", calibrationId)
       }
     } catch (error) {
-      console.error("Error loading calibration:", error)
+      console.error("❌ Error loading calibration:", error)
     } finally {
       setLoading(false)
     }
@@ -527,11 +610,28 @@ function LoadCellEditForm({
 
   const getValue = (index: number) => {
     const key = `reading-${index}`
-    return localValues[key] !== undefined ? localValues[key] : points[index].reading || ""
+    return localValues[key] !== undefined ? localValues[key] : points[index]?.reading?.toString() || ""
   }
+
+  // Ensure we always have data to display
+  const displayPoints =
+    points.length > 0
+      ? points
+      : [
+          { applied: 0, reading: 0, error: 0, withinTolerance: true },
+          { applied: 100, reading: 0, error: 0, withinTolerance: true },
+          { applied: 250, reading: 0, error: 0, withinTolerance: true },
+          { applied: 500, reading: 0, error: 0, withinTolerance: true },
+        ]
 
   return (
     <div>
+      <div className="mb-4 p-3 bg-blue-50 rounded">
+        <p className="text-sm text-blue-800">
+          <strong>Editing Load Cell Calibration</strong> - {displayPoints.length} data points loaded
+        </p>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -543,7 +643,7 @@ function LoadCellEditForm({
             </tr>
           </thead>
           <tbody>
-            {points.map((point, index) => (
+            {displayPoints.map((point, index) => (
               <tr key={index} className="border-b hover:bg-gray-50">
                 <td className="p-3 font-medium bg-blue-50">{point.applied}</td>
                 <td className="p-3">
@@ -634,15 +734,36 @@ function SpeedDisplacementEditForm({
 
   const getSpeedValue = (index: number) => {
     const key = `speed-${index}`
-    return speedLocalValues[key] !== undefined ? speedLocalValues[key] : speedPoints[index].actualSpeed || ""
+    return speedLocalValues[key] !== undefined
+      ? speedLocalValues[key]
+      : speedPoints[index]?.actualSpeed?.toString() || ""
   }
 
   const getDisplacementValue = (index: number) => {
     const key = `displacement-${index}`
     return displacementLocalValues[key] !== undefined
       ? displacementLocalValues[key]
-      : displacementPoints[index].actualDisplacement || ""
+      : displacementPoints[index]?.actualDisplacement?.toString() || ""
   }
+
+  // Ensure we always have data to display
+  const displaySpeedPoints =
+    speedPoints.length > 0
+      ? speedPoints
+      : [
+          { setSpeed: 0.1, actualSpeed: 0, error: 0, withinTolerance: true },
+          { setSpeed: 1.0, actualSpeed: 0, error: 0, withinTolerance: true },
+          { setSpeed: 5.0, actualSpeed: 0, error: 0, withinTolerance: true },
+        ]
+
+  const displayDisplacementPoints =
+    displacementPoints.length > 0
+      ? displacementPoints
+      : [
+          { setDisplacement: 1.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+          { setDisplacement: 10.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+          { setDisplacement: 25.0, actualDisplacement: 0, error: 0, withinTolerance: true },
+        ]
 
   return (
     <Tabs defaultValue="speed" className="w-full">
@@ -652,6 +773,12 @@ function SpeedDisplacementEditForm({
       </TabsList>
 
       <TabsContent value="speed" className="mt-6">
+        <div className="mb-4 p-3 bg-green-50 rounded">
+          <p className="text-sm text-green-800">
+            <strong>Editing Speed Data</strong> - {displaySpeedPoints.length} data points loaded
+          </p>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -663,7 +790,7 @@ function SpeedDisplacementEditForm({
               </tr>
             </thead>
             <tbody>
-              {speedPoints.map((point, index) => (
+              {displaySpeedPoints.map((point, index) => (
                 <tr key={index} className="border-b hover:bg-gray-50">
                   <td className="p-3 font-medium">{point.setSpeed}</td>
                   <td className="p-3">
@@ -717,6 +844,12 @@ function SpeedDisplacementEditForm({
       </TabsContent>
 
       <TabsContent value="displacement" className="mt-6">
+        <div className="mb-4 p-3 bg-purple-50 rounded">
+          <p className="text-sm text-purple-800">
+            <strong>Editing Displacement Data</strong> - {displayDisplacementPoints.length} data points loaded
+          </p>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -728,7 +861,7 @@ function SpeedDisplacementEditForm({
               </tr>
             </thead>
             <tbody>
-              {displacementPoints.map((point, index) => (
+              {displayDisplacementPoints.map((point, index) => (
                 <tr key={index} className="border-b hover:bg-gray-50">
                   <td className="p-3 font-medium">{point.setDisplacement}</td>
                   <td className="p-3">

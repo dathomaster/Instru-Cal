@@ -369,15 +369,34 @@ export default function LoadCellCalibrationPage() {
 
   const loadTools = async () => {
     try {
-      const tools = await calibrationDB.getToolsByType("load_tool")
-      const activeTools = tools.filter((tool) => {
+      console.log("🔧 Loading calibration tools...")
+      await calibrationDB.init()
+      const allTools = await calibrationDB.getTools()
+      console.log("All tools found:", allTools)
+
+      const loadTools = allTools.filter((tool) => tool.type === "load_tool")
+      console.log("Load tools found:", loadTools)
+
+      const activeTools = loadTools.filter((tool) => {
         const nextDate = new Date(tool.nextCalibrationDate)
         const now = new Date()
-        return nextDate >= now
+        const isActive = nextDate >= now
+        console.log(`Tool ${tool.name}: Next cal ${tool.nextCalibrationDate}, Active: ${isActive}`)
+        return isActive
       })
+
+      console.log("Active load tools:", activeTools)
       setAvailableTools(activeTools)
     } catch (error) {
       console.error("Error loading tools:", error)
+      // Fallback: try to get any tools if the specific query fails
+      try {
+        const allTools = await calibrationDB.getTools()
+        setAvailableTools(allTools.filter((tool) => tool.type === "load_tool"))
+      } catch (fallbackError) {
+        console.error("Fallback tool loading failed:", fallbackError)
+        setAvailableTools([])
+      }
     }
   }
 
@@ -529,12 +548,65 @@ export default function LoadCellCalibrationPage() {
     }
   }
 
-  const handlePrint = async () => {
+  // Generate report number based on date, technician initials, equipment SN, and sequence
+  const generateReportNumber = async (technician: string, equipmentId: string, date: string) => {
     try {
-      // First save the calibration and wait for it to complete
-      const calibrationId = Date.now().toString()
-      const calibration = {
-        id: calibrationId,
+      // Get equipment details
+      const equipment = await calibrationDB.getEquipmentById(equipmentId)
+      if (!equipment) {
+        console.warn("Equipment not found, using fallback SN")
+      }
+
+      // Format date as YYYYMMDD
+      const dateFormatted = date.replace(/-/g, "")
+
+      // Get technician initials (first letter of each word)
+      const initials = technician
+        .split(" ")
+        .map((name) => name.charAt(0).toUpperCase())
+        .join("")
+        .substring(0, 3) // Max 3 characters
+
+      // Get equipment serial number (clean it up)
+      const equipmentSN = equipment?.serialNumber?.replace(/[^A-Za-z0-9]/g, "").substring(0, 8) || "UNKNOWN"
+
+      // Check existing calibrations for today with same technician and equipment
+      const allCalibrations = await calibrationDB.getAllCalibrations()
+      const todayCalibrations = allCalibrations.filter((cal) => {
+        return cal.date === date && cal.technician === technician && cal.equipmentId === equipmentId
+      })
+
+      // Generate sequence number (001, 002, etc.)
+      const sequence = String(todayCalibrations.length + 1).padStart(3, "0")
+
+      // Final format: YYYYMMDD-INITIALS-SERIALNUMBER-SEQUENCE
+      const reportNumber = `${dateFormatted}-${initials}-${equipmentSN}-${sequence}`
+
+      console.log("📋 Generated report number:", reportNumber)
+      return reportNumber
+    } catch (error) {
+      console.error("Error generating report number:", error)
+      // Fallback to timestamp-based ID
+      return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    }
+  }
+
+  const saveCalibration = async () => {
+    try {
+      console.log("🔄 Starting calibration save process...")
+
+      // Ensure database is initialized
+      await calibrationDB.init()
+      console.log("✅ Database initialized")
+
+      // Generate proper report number
+      const reportNumber = await generateReportNumber(
+        calibrationData.technician,
+        equipmentId || "",
+        calibrationData.date,
+      )
+
+      const calibrationDataToSave = {
         customerId: customerId || "",
         equipmentId: equipmentId || "",
         type: "load_cell" as const,
@@ -544,6 +616,7 @@ export default function LoadCellCalibrationPage() {
         humidity: calibrationData.humidity,
         toolsUsed: calibrationData.toolsUsed,
         data: {
+          reportNumber: reportNumber, // Add report number to data
           tolerance: calibrationData.tolerance,
           capacity: calibrationData.capacity,
           tempBefore: calibrationData.tempBefore,
@@ -557,60 +630,94 @@ export default function LoadCellCalibrationPage() {
           compressionOverview,
         },
         result: overallResult as "pass" | "fail",
-        synced: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       }
 
-      // Wait for the save to complete
-      await calibrationDB.addCalibration(calibration)
+      console.log("💾 Saving calibration with report number:", reportNumber)
+      console.log("📊 Calibration data:", {
+        type: calibrationDataToSave.type,
+        technician: calibrationDataToSave.technician,
+        result: calibrationDataToSave.result,
+        reportNumber: calibrationDataToSave.reportNumber,
+      })
 
-      // Small delay to ensure database write is complete
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      // Let the database generate the ID
+      const savedCalibration = await calibrationDB.addCalibration(calibrationDataToSave)
+      console.log("✅ Calibration saved successfully with ID:", savedCalibration.id)
 
-      // Navigate to the certificate page with auto-print
-      window.location.href = `/calibrations/${calibrationId}/report?print=true`
+      // Verify it was saved by trying to retrieve it immediately
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const retrievedCalibration = await calibrationDB.getCalibrationById(savedCalibration.id)
+
+      if (retrievedCalibration) {
+        console.log("✅ Calibration verified in database:", retrievedCalibration.id)
+        return savedCalibration.id
+      } else {
+        console.error("❌ Calibration not found after save!")
+        const allCalibrations = await calibrationDB.getAllCalibrations()
+        console.log(
+          "Available calibrations:",
+          allCalibrations.map((c) => ({ id: c.id, reportNumber: c.data?.reportNumber })),
+        )
+        return null
+      }
     } catch (error) {
-      console.error("Error saving calibration for print:", error)
+      console.error("❌ Error saving calibration:", error)
+      return null
+    }
+  }
+
+  const handlePrint = async () => {
+    try {
+      console.log("🖨️ Starting print process...")
+
+      const calibrationId = await saveCalibration()
+
+      if (!calibrationId) {
+        alert("Error saving calibration. Please try again.")
+        return
+      }
+
+      console.log("✅ Calibration saved with ID:", calibrationId)
+
+      // Wait longer to ensure database write is complete
+      console.log("⏳ Waiting for database to settle...")
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // Verify the calibration exists before navigating
+      try {
+        const savedCalibration = await calibrationDB.getCalibrationById(calibrationId)
+        if (savedCalibration) {
+          console.log("✅ Calibration verified before print:", savedCalibration.id)
+          // Navigate to the certificate page with auto-print
+          console.log("🔄 Redirecting to certificate page...")
+          window.location.href = `/calibrations/${calibrationId}/report?print=true`
+        } else {
+          console.error("❌ Calibration not found after save, cannot print")
+          alert("Error: Calibration was saved but cannot be found for printing. Please try again.")
+        }
+      } catch (verifyError) {
+        console.error("❌ Error verifying calibration:", verifyError)
+        alert("Error verifying calibration for print. Please try again.")
+      }
+    } catch (error) {
+      console.error("❌ Error in print process:", error)
       alert("Error preparing calibration for print. Please try again.")
     }
   }
 
   const handleSave = async () => {
     try {
-      const calibration = {
-        id: Date.now().toString(),
-        customerId: customerId || "",
-        equipmentId: equipmentId || "",
-        type: "load_cell" as const,
-        technician: calibrationData.technician,
-        date: calibrationData.date,
-        temperature: calibrationData.temperature,
-        humidity: calibrationData.humidity,
-        toolsUsed: calibrationData.toolsUsed,
-        data: {
-          tolerance: calibrationData.tolerance,
-          capacity: calibrationData.capacity,
-          tempBefore: calibrationData.tempBefore,
-          tempAfter: calibrationData.tempAfter,
-          gravityMultiplier: calibrationData.gravityMultiplier,
-          tensionRun1,
-          tensionRun2,
-          compressionRun1,
-          compressionRun2,
-          tensionOverview,
-          compressionOverview,
-        },
-        result: overallResult as "pass" | "fail",
-        synced: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
+      console.log("💾 Starting save process...")
 
-      await calibrationDB.addCalibration(calibration)
-      alert("Calibration saved successfully!")
+      const calibrationId = await saveCalibration()
+
+      if (calibrationId) {
+        alert("Calibration saved successfully!")
+      } else {
+        alert("Error saving calibration. Please try again.")
+      }
     } catch (error) {
-      console.error("Error saving calibration:", error)
+      console.error("❌ Error saving calibration:", error)
       alert("Error saving calibration. Please try again.")
     }
   }
@@ -853,23 +960,33 @@ export default function LoadCellCalibrationPage() {
 
               <div>
                 <Label htmlFor="tools">Calibration Tools Used</Label>
-                <Select
-                  value={calibrationData.toolsUsed[0] || ""}
-                  onValueChange={(value) =>
-                    setCalibrationData((prev) => ({ ...prev, toolsUsed: value ? [value] : [] }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select calibration tool" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTools.map((tool) => (
-                      <SelectItem key={tool.id} value={tool.id}>
-                        {tool.name} - {tool.serialNumber}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {availableTools.length > 0 ? (
+                  <Select
+                    value={calibrationData.toolsUsed[0] || ""}
+                    onValueChange={(value) => {
+                      console.log("Tool selected:", value)
+                      setCalibrationData((prev) => ({ ...prev, toolsUsed: value ? [value] : [] }))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select calibration tool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTools.map((tool) => (
+                        <SelectItem key={tool.id} value={tool.id}>
+                          {tool.name} - {tool.serialNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 border rounded">
+                    No active calibration tools available. Please add tools in the Tools section.
+                  </div>
+                )}
+                {availableTools.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{availableTools.length} active tool(s) available</p>
+                )}
               </div>
 
               <div className="bg-yellow-50 p-3 rounded border">

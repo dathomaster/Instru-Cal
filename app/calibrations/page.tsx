@@ -2,9 +2,20 @@
 
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { calibrationDB, type Calibration, type Customer, type Equipment } from "@/lib/db"
 import Link from "next/link"
-import { Edit, FileText, Plus, ArrowLeft, Search } from "lucide-react"
+import { Edit, FileText, Plus, ArrowLeft, Search, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function CalibrationsPage() {
@@ -13,6 +24,7 @@ export default function CalibrationsPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadData() {
@@ -44,6 +56,23 @@ export default function CalibrationsPage() {
   const getEquipmentName = (equipmentId: string) => {
     const eq = equipment.find((e) => e.id === equipmentId)
     return eq?.name || "Unknown Equipment"
+  }
+
+  const handleDeleteCalibration = async (calibrationId: string) => {
+    try {
+      setDeletingId(calibrationId)
+      await calibrationDB.deleteCalibration(calibrationId)
+
+      // Remove from local state
+      setCalibrations((prev) => prev.filter((cal) => cal.id !== calibrationId))
+
+      console.log("Calibration deleted successfully")
+    } catch (error) {
+      console.error("Error deleting calibration:", error)
+      alert("Failed to delete calibration. Please try again.")
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const filteredCalibrations = calibrations.filter((calibration) => {
@@ -181,6 +210,43 @@ export default function CalibrationsPage() {
                         View Report
                       </Button>
                     </Link>
+
+                    {/* Delete Button with Confirmation Dialog */}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={deletingId === calibration.id}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          {deletingId === calibration.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Calibration</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this calibration for{" "}
+                            <strong>{getCustomerName(calibration.customerId)}</strong> -{" "}
+                            <strong>{getEquipmentName(calibration.equipmentId)}</strong>?
+                            <br />
+                            <br />
+                            This action cannot be undone. The calibration data and report will be permanently removed.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteCalibration(calibration.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete Calibration
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>

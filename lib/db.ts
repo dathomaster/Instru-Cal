@@ -1,4 +1,4 @@
-// lib/db.ts
+// lib/db.ts - Enhanced offline support
 
 // IndexedDB utilities for offline storage
 import { syncManager } from "./sync" // Import syncManager
@@ -82,55 +82,85 @@ class CalibrationDB {
   private dbName = "CalibrationApp"
   private version = 2 // Incremented for new tools store
   private db: IDBDatabase | null = null
+  private initPromise: Promise<void> | null = null
 
   async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, this.version)
+    // Return existing promise if already initializing
+    if (this.initPromise) {
+      return this.initPromise
+    }
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        this.db = request.result
-        resolve()
-      }
+    // Return immediately if already initialized
+    if (this.db) {
+      return Promise.resolve()
+    }
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result
+    this.initPromise = new Promise((resolve, reject) => {
+      try {
+        const request = indexedDB.open(this.dbName, this.version)
 
-        // Create customers store
-        if (!db.objectStoreNames.contains("customers")) {
-          const customerStore = db.createObjectStore("customers", { keyPath: "id" })
-          customerStore.createIndex("name", "name", { unique: false })
+        request.onerror = () => {
+          console.error("IndexedDB error:", request.error)
+          reject(request.error)
         }
 
-        // Create equipment store
-        if (!db.objectStoreNames.contains("equipment")) {
-          const equipmentStore = db.createObjectStore("equipment", { keyPath: "id" })
-          equipmentStore.createIndex("customerId", "customerId", { unique: false })
-          equipmentStore.createIndex("type", "type", { unique: false })
+        request.onsuccess = () => {
+          this.db = request.result
+          console.log("✅ IndexedDB initialized successfully")
+          resolve()
         }
 
-        // Create calibration tools store
-        if (!db.objectStoreNames.contains("tools")) {
-          const toolsStore = db.createObjectStore("tools", { keyPath: "id" })
-          toolsStore.createIndex("type", "type", { unique: false })
-          toolsStore.createIndex("status", "status", { unique: false })
-          toolsStore.createIndex("nextCalibrationDate", "nextCalibrationDate", { unique: false })
-        }
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result
+          console.log("🔄 Upgrading IndexedDB schema...")
 
-        // Create calibrations store
-        if (!db.objectStoreNames.contains("calibrations")) {
-          const calibrationStore = db.createObjectStore("calibrations", { keyPath: "id" })
-          calibrationStore.createIndex("customerId", "customerId", { unique: false })
-          calibrationStore.createIndex("equipmentId", "equipmentId", { unique: false })
-          calibrationStore.createIndex("type", "type", { unique: false })
-          calibrationStore.createIndex("date", "date", { unique: false })
+          // Create customers store
+          if (!db.objectStoreNames.contains("customers")) {
+            const customerStore = db.createObjectStore("customers", { keyPath: "id" })
+            customerStore.createIndex("name", "name", { unique: false })
+            console.log("Created customers store")
+          }
+
+          // Create equipment store
+          if (!db.objectStoreNames.contains("equipment")) {
+            const equipmentStore = db.createObjectStore("equipment", { keyPath: "id" })
+            equipmentStore.createIndex("customerId", "customerId", { unique: false })
+            equipmentStore.createIndex("type", "type", { unique: false })
+            console.log("Created equipment store")
+          }
+
+          // Create calibration tools store
+          if (!db.objectStoreNames.contains("tools")) {
+            const toolsStore = db.createObjectStore("tools", { keyPath: "id" })
+            toolsStore.createIndex("type", "type", { unique: false })
+            toolsStore.createIndex("status", "status", { unique: false })
+            toolsStore.createIndex("nextCalibrationDate", "nextCalibrationDate", { unique: false })
+            console.log("Created tools store")
+          }
+
+          // Create calibrations store
+          if (!db.objectStoreNames.contains("calibrations")) {
+            const calibrationStore = db.createObjectStore("calibrations", { keyPath: "id" })
+            calibrationStore.createIndex("customerId", "customerId", { unique: false })
+            calibrationStore.createIndex("equipmentId", "equipmentId", { unique: false })
+            calibrationStore.createIndex("type", "type", { unique: false })
+            calibrationStore.createIndex("date", "date", { unique: false })
+            console.log("Created calibrations store")
+          }
         }
+      } catch (error) {
+        console.error("Failed to initialize IndexedDB:", error)
+        reject(error)
       }
     })
+
+    return this.initPromise
   }
 
   // Tool management methods
   async addTool(tool: Omit<CalibrationTool, "id" | "createdAt" | "updatedAt">): Promise<CalibrationTool> {
+    await this.init()
+
     const newTool: CalibrationTool = {
       ...tool,
       id: generateUUID(),
@@ -139,23 +169,35 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("tools", newTool)
+    try {
+      await this.saveToStore("tools", newTool)
+      console.log("✅ Tool saved to IndexedDB:", newTool.id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("tool", newTool.id, "create")
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("tool", newTool.id, "create")
+      }
 
-    return newTool
+      return newTool
+    } catch (error) {
+      console.error("❌ Failed to save tool:", error)
+      throw error
+    }
   }
 
   async getTools(): Promise<CalibrationTool[]> {
+    await this.init()
     return this.getAllFromStore("tools")
   }
 
   async getToolsByType(type: string): Promise<CalibrationTool[]> {
+    await this.init()
     return this.getFromStoreByIndex("tools", "type", type)
   }
 
   async updateTool(id: string, updates: Partial<CalibrationTool>): Promise<CalibrationTool> {
+    await this.init()
+
     const existing = await this.getToolById(id)
     if (!existing) throw new Error("Tool not found")
 
@@ -168,13 +210,16 @@ class CalibrationDB {
 
     await this.saveToStore("tools", updated)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("tool", id, "update")
+    // Add to sync queue only if we have syncManager
+    if (typeof syncManager !== "undefined") {
+      syncManager.addToSyncQueue("tool", id, "update")
+    }
 
     return updated
   }
 
   async getToolById(id: string): Promise<CalibrationTool | null> {
+    await this.init()
     return this.getFromStore("tools", id)
   }
 
@@ -183,6 +228,8 @@ class CalibrationDB {
     equipment: Array<{ equipment: Equipment; customer: Customer; daysUntilDue: number }>
     tools: Array<{ tool: CalibrationTool; daysUntilDue: number }>
   }> {
+    await this.init()
+
     const allEquipment = await this.getAllEquipment()
     const allCalibrations = await this.getAllCalibrations()
     const allTools = await this.getTools()
@@ -239,6 +286,8 @@ class CalibrationDB {
 
   // Customer operations
   async addCustomer(customer: Omit<Customer, "id" | "createdAt" | "updatedAt">): Promise<Customer> {
+    await this.init()
+
     const newCustomer: Customer = {
       ...customer,
       id: generateUUID(),
@@ -247,15 +296,25 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("customers", newCustomer)
+    try {
+      await this.saveToStore("customers", newCustomer)
+      console.log("✅ Customer saved to IndexedDB:", newCustomer.id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("customer", newCustomer.id, "create")
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("customer", newCustomer.id, "create")
+      }
 
-    return newCustomer
+      return newCustomer
+    } catch (error) {
+      console.error("❌ Failed to save customer:", error)
+      throw error
+    }
   }
 
   async updateCustomer(customer: Customer): Promise<void> {
+    await this.init()
+
     const updated: Customer = {
       ...customer,
       updatedAt: new Date().toISOString(),
@@ -264,27 +323,36 @@ class CalibrationDB {
 
     await this.saveToStore("customers", updated)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("customer", customer.id, "update")
+    // Add to sync queue only if we have syncManager
+    if (typeof syncManager !== "undefined") {
+      syncManager.addToSyncQueue("customer", customer.id, "update")
+    }
   }
 
   async deleteCustomer(id: string): Promise<void> {
+    await this.init()
     await this.deleteFromStore("customers", id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("customer", id, "delete")
+    // Add to sync queue only if we have syncManager
+    if (typeof syncManager !== "undefined") {
+      syncManager.addToSyncQueue("customer", id, "delete")
+    }
   }
 
   async getCustomers(): Promise<Customer[]> {
+    await this.init()
     return this.getAllFromStore("customers")
   }
 
   async getCustomerById(id: string): Promise<Customer | null> {
+    await this.init()
     return this.getFromStore("customers", id)
   }
 
   // Equipment operations
   async addEquipment(equipment: Omit<Equipment, "id" | "createdAt" | "updatedAt">): Promise<Equipment> {
+    await this.init()
+
     const newEquipment: Equipment = {
       ...equipment,
       id: generateUUID(),
@@ -293,15 +361,25 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("equipment", newEquipment)
+    try {
+      await this.saveToStore("equipment", newEquipment)
+      console.log("✅ Equipment saved to IndexedDB:", newEquipment.id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("equipment", newEquipment.id, "create")
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("equipment", newEquipment.id, "create")
+      }
 
-    return newEquipment
+      return newEquipment
+    } catch (error) {
+      console.error("❌ Failed to save equipment:", error)
+      throw error
+    }
   }
 
   async updateEquipment(equipment: Equipment): Promise<void> {
+    await this.init()
+
     const updated: Equipment = {
       ...equipment,
       updatedAt: new Date().toISOString(),
@@ -310,31 +388,41 @@ class CalibrationDB {
 
     await this.saveToStore("equipment", updated)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("equipment", equipment.id, "update")
+    // Add to sync queue only if we have syncManager
+    if (typeof syncManager !== "undefined") {
+      syncManager.addToSyncQueue("equipment", equipment.id, "update")
+    }
   }
 
   async deleteEquipment(id: string): Promise<void> {
+    await this.init()
     await this.deleteFromStore("equipment", id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("equipment", id, "delete")
+    // Add to sync queue only if we have syncManager
+    if (typeof syncManager !== "undefined") {
+      syncManager.addToSyncQueue("equipment", id, "delete")
+    }
   }
 
   async getAllEquipment(): Promise<Equipment[]> {
+    await this.init()
     return this.getAllFromStore("equipment")
   }
 
   async getEquipmentById(id: string): Promise<Equipment | null> {
+    await this.init()
     return this.getFromStore("equipment", id)
   }
 
   async getEquipmentByCustomer(customerId: string): Promise<Equipment[]> {
+    await this.init()
     return this.getFromStoreByIndex("equipment", "customerId", customerId)
   }
 
   // Calibration operations
   async addCalibration(calibration: Omit<Calibration, "id" | "createdAt" | "updatedAt">): Promise<Calibration> {
+    await this.init()
+
     const newCalibration: Calibration = {
       ...calibration,
       id: generateUUID(),
@@ -343,57 +431,91 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("calibrations", newCalibration)
+    try {
+      await this.saveToStore("calibrations", newCalibration)
+      console.log("✅ Calibration saved to IndexedDB:", newCalibration.id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("calibration", newCalibration.id, "create")
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("calibration", newCalibration.id, "create")
+      }
 
-    return newCalibration
+      return newCalibration
+    } catch (error) {
+      console.error("❌ Failed to save calibration:", error)
+      throw error
+    }
   }
 
   async updateCalibration(calibration: Calibration): Promise<void> {
+    await this.init()
+
     const updated: Calibration = {
       ...calibration,
       updatedAt: new Date().toISOString(),
       synced: false,
     }
 
-    await this.saveToStore("calibrations", updated)
+    try {
+      await this.saveToStore("calibrations", updated)
+      console.log("✅ Calibration updated in IndexedDB:", calibration.id)
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("calibration", calibration.id, "update")
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("calibration", calibration.id, "update")
+      }
+    } catch (error) {
+      console.error("❌ Failed to update calibration:", error)
+      throw error
+    }
   }
 
   async deleteCalibration(id: string): Promise<void> {
-    await this.deleteFromStore("calibrations", id)
+    await this.init()
 
-    // Add to sync queue
-    syncManager.addToSyncQueue("calibration", id, "delete")
+    try {
+      await this.deleteFromStore("calibrations", id)
+      console.log("✅ Calibration deleted from IndexedDB:", id)
+
+      // Add to sync queue only if we have syncManager
+      if (typeof syncManager !== "undefined") {
+        syncManager.addToSyncQueue("calibration", id, "delete")
+      }
+    } catch (error) {
+      console.error("❌ Failed to delete calibration:", error)
+      throw error
+    }
   }
 
   async getAllCalibrations(): Promise<Calibration[]> {
+    await this.init()
     return this.getAllFromStore("calibrations")
   }
 
   async getCalibrationById(id: string): Promise<Calibration | null> {
+    await this.init()
     return this.getFromStore("calibrations", id)
   }
 
   async getCalibrationsByCustomer(customerId: string): Promise<Calibration[]> {
+    await this.init()
     return this.getFromStoreByIndex("calibrations", "customerId", customerId)
   }
 
   async getCalibrationsByEquipment(equipmentId: string): Promise<Calibration[]> {
+    await this.init()
     return this.getFromStoreByIndex("calibrations", "equipmentId", equipmentId)
   }
 
   // Sync-related operations
   async getUnsyncedCalibrations(): Promise<Calibration[]> {
+    await this.init()
     const allCalibrations = await this.getAllCalibrations()
     return allCalibrations.filter((cal) => !cal.synced)
   }
 
   async markCalibrationSynced(id: string): Promise<void> {
+    await this.init()
     const calibration = await this.getCalibrationById(id)
     if (calibration) {
       calibration.synced = true
@@ -401,7 +523,7 @@ class CalibrationDB {
     }
   }
 
-  // Generic store operations
+  // Generic store operations with better error handling
   private async saveToStore<T>(storeName: string, data: T): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -409,12 +531,25 @@ class CalibrationDB {
         return
       }
 
-      const transaction = this.db.transaction([storeName], "readwrite")
-      const store = transaction.objectStore(storeName)
-      const request = store.put(data)
+      try {
+        const transaction = this.db.transaction([storeName], "readwrite")
+        const store = transaction.objectStore(storeName)
+        const request = store.put(data)
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve()
+        request.onerror = () => {
+          console.error(`Failed to save to ${storeName}:`, request.error)
+          reject(request.error)
+        }
+        request.onsuccess = () => resolve()
+
+        transaction.onerror = () => {
+          console.error(`Transaction failed for ${storeName}:`, transaction.error)
+          reject(transaction.error)
+        }
+      } catch (error) {
+        console.error(`Exception in saveToStore for ${storeName}:`, error)
+        reject(error)
+      }
     })
   }
 
@@ -425,12 +560,20 @@ class CalibrationDB {
         return
       }
 
-      const transaction = this.db.transaction([storeName], "readonly")
-      const store = transaction.objectStore(storeName)
-      const request = store.get(id)
+      try {
+        const transaction = this.db.transaction([storeName], "readonly")
+        const store = transaction.objectStore(storeName)
+        const request = store.get(id)
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result || null)
+        request.onerror = () => {
+          console.error(`Failed to get from ${storeName}:`, request.error)
+          reject(request.error)
+        }
+        request.onsuccess = () => resolve(request.result || null)
+      } catch (error) {
+        console.error(`Exception in getFromStore for ${storeName}:`, error)
+        reject(error)
+      }
     })
   }
 
@@ -441,12 +584,20 @@ class CalibrationDB {
         return
       }
 
-      const transaction = this.db.transaction([storeName], "readonly")
-      const store = transaction.objectStore(storeName)
-      const request = store.getAll()
+      try {
+        const transaction = this.db.transaction([storeName], "readonly")
+        const store = transaction.objectStore(storeName)
+        const request = store.getAll()
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result || [])
+        request.onerror = () => {
+          console.error(`Failed to get all from ${storeName}:`, request.error)
+          reject(request.error)
+        }
+        request.onsuccess = () => resolve(request.result || [])
+      } catch (error) {
+        console.error(`Exception in getAllFromStore for ${storeName}:`, error)
+        reject(error)
+      }
     })
   }
 
@@ -457,13 +608,21 @@ class CalibrationDB {
         return
       }
 
-      const transaction = this.db.transaction([storeName], "readonly")
-      const store = transaction.objectStore(storeName)
-      const index = store.index(indexName)
-      const request = index.getAll(value)
+      try {
+        const transaction = this.db.transaction([storeName], "readonly")
+        const store = transaction.objectStore(storeName)
+        const index = store.index(indexName)
+        const request = index.getAll(value)
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve(request.result || [])
+        request.onerror = () => {
+          console.error(`Failed to get from ${storeName} by index ${indexName}:`, request.error)
+          reject(request.error)
+        }
+        request.onsuccess = () => resolve(request.result || [])
+      } catch (error) {
+        console.error(`Exception in getFromStoreByIndex for ${storeName}:`, error)
+        reject(error)
+      }
     })
   }
 
@@ -474,12 +633,20 @@ class CalibrationDB {
         return
       }
 
-      const transaction = this.db.transaction([storeName], "readwrite")
-      const store = transaction.objectStore(storeName)
-      const request = store.delete(id)
+      try {
+        const transaction = this.db.transaction([storeName], "readwrite")
+        const store = transaction.objectStore(storeName)
+        const request = store.delete(id)
 
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve()
+        request.onerror = () => {
+          console.error(`Failed to delete from ${storeName}:`, request.error)
+          reject(request.error)
+        }
+        request.onsuccess = () => resolve()
+      } catch (error) {
+        console.error(`Exception in deleteFromStore for ${storeName}:`, error)
+        reject(error)
+      }
     })
   }
 
@@ -491,13 +658,21 @@ class CalibrationDB {
 
   async initializeSampleData(): Promise<void> {
     try {
+      await this.init()
+
       const customers = await this.getCustomers()
       const equipment = await this.getAllEquipment()
       const calibrations = await this.getAllCalibrations()
       const tools = await this.getTools()
 
+      console.log("🔄 Initializing sample data...")
+      console.log(
+        `Found: ${customers.length} customers, ${equipment.length} equipment, ${calibrations.length} calibrations, ${tools.length} tools`,
+      )
+
       // Add sample tools if none exist
       if (tools.length === 0) {
+        console.log("📝 Adding sample tools...")
         const sampleTools = [
           {
             name: "Precision Load Cell Tester",
@@ -560,10 +735,12 @@ class CalibrationDB {
         for (const tool of sampleTools) {
           await this.addTool(tool)
         }
+        console.log("✅ Sample tools added")
       }
 
       // Add sample customers if none exist
       if (customers.length === 0) {
+        console.log("📝 Adding sample customers...")
         const sampleCustomers = [
           {
             name: "Acme Corporation",
@@ -594,10 +771,12 @@ class CalibrationDB {
         for (const customer of sampleCustomers) {
           await this.addCustomer(customer)
         }
+        console.log("✅ Sample customers added")
       }
 
       // Add sample equipment if none exist
       if (equipment.length === 0) {
+        console.log("📝 Adding sample equipment...")
         const allCustomers = await this.getCustomers()
         if (allCustomers.length > 0) {
           const sampleEquipment = [
@@ -654,11 +833,13 @@ class CalibrationDB {
           for (const eq of sampleEquipment) {
             await this.addEquipment(eq)
           }
+          console.log("✅ Sample equipment added")
         }
       }
 
       // Add sample calibrations if none exist
       if (calibrations.length === 0) {
+        console.log("📝 Adding sample calibrations...")
         const allCustomers = await this.getCustomers()
         const allEquipment = await this.getAllEquipment()
         const allTools = await this.getTools()
@@ -717,10 +898,13 @@ class CalibrationDB {
           for (const calibration of sampleCalibrations) {
             await this.addCalibration(calibration)
           }
+          console.log("✅ Sample calibrations added")
         }
       }
+
+      console.log("✅ Sample data initialization complete")
     } catch (error) {
-      console.error("Error initializing sample data:", error)
+      console.error("❌ Error initializing sample data:", error)
     }
   }
 }
@@ -732,9 +916,15 @@ if (typeof window !== "undefined") {
   calibrationDB
     .init()
     .then(() => {
-      calibrationDB.initializeSampleData()
+      console.log("🚀 Database initialized, loading sample data...")
+      return calibrationDB.initializeSampleData()
     })
-    .catch(console.error)
+    .then(() => {
+      console.log("🎉 App ready for offline use!")
+    })
+    .catch((error) => {
+      console.error("💥 Failed to initialize app:", error)
+    })
 }
 
 // Add this line to export calibrationDB as db as well

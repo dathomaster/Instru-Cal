@@ -1,95 +1,111 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Wifi, FileText, Users, Wrench, Plus } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Wifi, WifiOff, RefreshCw, Home, Database } from "lucide-react"
 
 export default function OfflinePage() {
+  const [isOnline, setIsOnline] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+
+  useEffect(() => {
+    // Check initial online status
+    setIsOnline(navigator.onLine)
+
+    // Listen for online/offline events
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
+    // Try to reload the page
+    window.location.reload()
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        <Card className="shadow-lg">
-          <CardContent className="p-8">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                <Wifi className="w-8 h-8 text-blue-600" />
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4">
+            {isOnline ? <Wifi className="h-16 w-16 text-green-500" /> : <WifiOff className="h-16 w-16 text-red-500" />}
+          </div>
+          <CardTitle className="text-2xl">{isOnline ? "Connection Restored!" : "You're Offline"}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-center">
+            <Badge variant={isOnline ? "default" : "secondary"} className={isOnline ? "bg-green-600" : ""}>
+              {isOnline ? "Online" : "Offline Mode"}
+            </Badge>
+          </div>
+
+          <div className="text-sm text-gray-600 text-center space-y-2">
+            {isOnline ? (
+              <div>
+                <p>Your internet connection has been restored.</p>
+                <p>You can now sync your offline data.</p>
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">You're Working Offline</h1>
-              <p className="text-gray-600 text-lg">
-                No internet connection detected, but you can continue working. All your data will sync automatically
-                when you're back online.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-green-800 mb-2">✅ Available Offline:</h3>
-                <ul className="text-sm text-green-700 space-y-1">
-                  <li>• Create new calibrations</li>
-                  <li>• Edit existing data</li>
-                  <li>• View all records</li>
-                  <li>• Generate reports</li>
-                  <li>• Manage customers & equipment</li>
-                </ul>
+            ) : (
+              <div>
+                <p>Don't worry! CalibrationPro works offline.</p>
+                <p>Your data is saved locally and will sync when you're back online.</p>
               </div>
+            )}
+          </div>
 
-              <div className="bg-orange-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-orange-800 mb-2">⏳ Requires Internet:</h3>
-                <ul className="text-sm text-orange-700 space-y-1">
-                  <li>• Syncing with cloud database</li>
-                  <li>• Sharing data with team</li>
-                  <li>• Backup to server</li>
-                  <li>• Real-time collaboration</li>
-                </ul>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Available Offline Features:</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Create and edit calibrations
+              </li>
+              <li className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                View existing data
+              </li>
+              <li className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Generate reports
+              </li>
+              <li className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Manage customers & equipment
+              </li>
+            </ul>
+          </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <Link href="/calibrations/new">
-                <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
-                  <Plus className="h-6 w-6" />
-                  <span className="text-xs">New Calibration</span>
-                </Button>
-              </Link>
+          <div className="flex gap-2">
+            <Link href="/" className="flex-1">
+              <Button variant="outline" className="w-full">
+                <Home className="h-4 w-4 mr-2" />
+                Go to Dashboard
+              </Button>
+            </Link>
+            <Button onClick={handleRetry} variant="default" className="flex-1">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry {retryCount > 0 && `(${retryCount})`}
+            </Button>
+          </div>
 
-              <Link href="/calibrations">
-                <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
-                  <FileText className="h-6 w-6" />
-                  <span className="text-xs">View Calibrations</span>
-                </Button>
-              </Link>
-
-              <Link href="/customers">
-                <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
-                  <Users className="h-6 w-6" />
-                  <span className="text-xs">Customers</span>
-                </Button>
-              </Link>
-
-              <Link href="/equipment">
-                <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
-                  <Wrench className="h-6 w-6" />
-                  <span className="text-xs">Equipment</span>
-                </Button>
-              </Link>
-            </div>
-
+          {isOnline && (
             <div className="text-center">
-              <Link href="/">
-                <Button className="w-full md:w-auto px-8">Continue to Dashboard</Button>
-              </Link>
+              <p className="text-sm text-green-600">✅ Ready to sync your offline changes!</p>
             </div>
-
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800 text-center">
-                <strong>Tip:</strong> Install this app on your device for the best offline experience. Look for the
-                "Install" button in your browser's address bar.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

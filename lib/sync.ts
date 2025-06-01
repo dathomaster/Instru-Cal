@@ -12,8 +12,17 @@ class SyncManager {
 
   constructor() {
     if (typeof window !== "undefined") {
-      window.addEventListener("online", this.handleOnline.bind(this))
-      window.addEventListener("offline", this.handleOffline.bind(this))
+      // Better online/offline detection
+      this.isOnline = navigator.onLine
+
+      window.addEventListener("online", () => {
+        console.log("Network came online")
+        this.handleOnline()
+      })
+      window.addEventListener("offline", () => {
+        console.log("Network went offline")
+        this.handleOffline()
+      })
 
       // Register service worker
       if ("serviceWorker" in navigator) {
@@ -113,6 +122,15 @@ class SyncManager {
   async syncData() {
     if (!this.isOnline || this.syncInProgress) return
 
+    // Check if we're actually online by testing connectivity
+    try {
+      await fetch("/api/health", { method: "HEAD", timeout: 5000 })
+    } catch {
+      console.log("Network connectivity check failed, staying offline")
+      this.isOnline = false
+      return
+    }
+
     const supabase = createClientSupabaseClient()
     const {
       data: { session },
@@ -191,151 +209,175 @@ class SyncManager {
   }
 
   private async syncCalibrationItem(id: string, operation: string) {
-    const supabase = createClientSupabaseClient()
+    try {
+      const supabase = createClientSupabaseClient()
 
-    // Check if we have a valid session
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      console.log("No session found, skipping sync")
-      return
-    }
+      // Check if we have a valid session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        console.log("No valid session, skipping sync:", sessionError?.message)
+        return
+      }
 
-    if (operation === "delete") {
-      await supabase.from("calibrations").delete().eq("id", id)
-      return
-    }
+      if (operation === "delete") {
+        await supabase.from("calibrations").delete().eq("id", id)
+        return
+      }
 
-    const calibration = await calibrationDB.getCalibrationById(id)
-    if (!calibration) return
+      const calibration = await calibrationDB.getCalibrationById(id)
+      if (!calibration) return
 
-    if (operation === "create" || operation === "update") {
-      await supabase.from("calibrations").upsert({
-        id: calibration.id,
-        customer_id: calibration.customerId,
-        equipment_id: calibration.equipmentId,
-        type: calibration.type,
-        technician: calibration.technician,
-        date: calibration.date,
-        temperature: calibration.temperature,
-        humidity: calibration.humidity,
-        tools_used: calibration.toolsUsed,
-        data: calibration.data,
-        result: calibration.result,
-        created_at: calibration.createdAt,
-        updated_at: calibration.updatedAt,
-      })
+      if (operation === "create" || operation === "update") {
+        await supabase.from("calibrations").upsert({
+          id: calibration.id,
+          customer_id: calibration.customerId,
+          equipment_id: calibration.equipmentId,
+          type: calibration.type,
+          technician: calibration.technician,
+          date: calibration.date,
+          temperature: calibration.temperature,
+          humidity: calibration.humidity,
+          tools_used: calibration.toolsUsed,
+          data: calibration.data,
+          result: calibration.result,
+          created_at: calibration.createdAt,
+          updated_at: calibration.updatedAt,
+        })
+      }
+    } catch (error) {
+      console.error(`Failed to sync calibration ${id}:`, error)
+      // Don't throw - just log and continue
     }
   }
 
   private async syncCustomerItem(id: string, operation: string) {
-    const supabase = createClientSupabaseClient()
+    try {
+      const supabase = createClientSupabaseClient()
 
-    // Check if we have a valid session
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      console.log("No session found, skipping sync")
-      return
-    }
+      // Check if we have a valid session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        console.log("No valid session, skipping sync:", sessionError?.message)
+        return
+      }
 
-    if (operation === "delete") {
-      await supabase.from("customers").delete().eq("id", id)
-      return
-    }
+      if (operation === "delete") {
+        await supabase.from("customers").delete().eq("id", id)
+        return
+      }
 
-    const customer = await calibrationDB.getCustomerById(id)
-    if (!customer) return
+      const customer = await calibrationDB.getCustomerById(id)
+      if (!customer) return
 
-    if (operation === "create" || operation === "update") {
-      await supabase.from("customers").upsert({
-        id: customer.id,
-        name: customer.name,
-        location: customer.location,
-        contact: customer.contact,
-        email: customer.email,
-        phone: customer.phone,
-        notes: customer.notes,
-        created_at: customer.createdAt,
-        updated_at: customer.updatedAt,
-      })
+      if (operation === "create" || operation === "update") {
+        await supabase.from("customers").upsert({
+          id: customer.id,
+          name: customer.name,
+          location: customer.location,
+          contact: customer.contact,
+          email: customer.email,
+          phone: customer.phone,
+          notes: customer.notes,
+          created_at: customer.createdAt,
+          updated_at: customer.updatedAt,
+        })
+      }
+    } catch (error) {
+      console.error(`Failed to sync customer ${id}:`, error)
+      // Don't throw - just log and continue
     }
   }
 
   private async syncEquipmentItem(id: string, operation: string) {
-    const supabase = createClientSupabaseClient()
+    try {
+      const supabase = createClientSupabaseClient()
 
-    // Check if we have a valid session
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      console.log("No session found, skipping sync")
-      return
-    }
+      // Check if we have a valid session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        console.log("No valid session, skipping sync:", sessionError?.message)
+        return
+      }
 
-    if (operation === "delete") {
-      await supabase.from("equipment").delete().eq("id", id)
-      return
-    }
+      if (operation === "delete") {
+        await supabase.from("equipment").delete().eq("id", id)
+        return
+      }
 
-    const equipment = await calibrationDB.getEquipmentById(id)
-    if (!equipment) return
+      const equipment = await calibrationDB.getEquipmentById(id)
+      if (!equipment) return
 
-    if (operation === "create" || operation === "update") {
-      await supabase.from("equipment").upsert({
-        id: equipment.id,
-        name: equipment.name,
-        type: equipment.type,
-        serial_number: equipment.serialNumber,
-        customer_id: equipment.customerId,
-        specifications: equipment.specifications,
-        created_at: equipment.createdAt,
-        updated_at: equipment.updatedAt,
-      })
+      if (operation === "create" || operation === "update") {
+        await supabase.from("equipment").upsert({
+          id: equipment.id,
+          name: equipment.name,
+          type: equipment.type,
+          serial_number: equipment.serialNumber,
+          customer_id: equipment.customerId,
+          specifications: equipment.specifications,
+          created_at: equipment.createdAt,
+          updated_at: equipment.updatedAt,
+        })
+      }
+    } catch (error) {
+      console.error(`Failed to sync equipment ${id}:`, error)
+      // Don't throw - just log and continue
     }
   }
 
   private async syncToolItem(id: string, operation: string) {
-    const supabase = createClientSupabaseClient()
+    try {
+      const supabase = createClientSupabaseClient()
 
-    // Check if we have a valid session
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      console.log("No session found, skipping sync")
-      return
-    }
+      // Check if we have a valid session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        console.log("No valid session, skipping sync:", sessionError?.message)
+        return
+      }
 
-    if (operation === "delete") {
-      await supabase.from("tools").delete().eq("id", id)
-      return
-    }
+      if (operation === "delete") {
+        await supabase.from("tools").delete().eq("id", id)
+        return
+      }
 
-    const tool = await calibrationDB.getToolById(id)
-    if (!tool) return
+      const tool = await calibrationDB.getToolById(id)
+      if (!tool) return
 
-    if (operation === "create" || operation === "update") {
-      await supabase.from("tools").upsert({
-        id: tool.id,
-        name: tool.name,
-        type: tool.type,
-        serial_number: tool.serialNumber,
-        manufacturer: tool.manufacturer,
-        model: tool.model,
-        accuracy: tool.accuracy,
-        range: tool.range,
-        last_calibration_date: tool.lastCalibrationDate,
-        next_calibration_date: tool.nextCalibrationDate,
-        certificate_number: tool.certificateNumber,
-        status: tool.status,
-        notes: tool.notes,
-        created_at: tool.createdAt,
-        updated_at: tool.updatedAt,
-      })
+      if (operation === "create" || operation === "update") {
+        await supabase.from("tools").upsert({
+          id: tool.id,
+          name: tool.name,
+          type: tool.type,
+          serial_number: tool.serialNumber,
+          manufacturer: tool.manufacturer,
+          model: tool.model,
+          accuracy: tool.accuracy,
+          range: tool.range,
+          last_calibration_date: tool.lastCalibrationDate,
+          next_calibration_date: tool.nextCalibrationDate,
+          certificate_number: tool.certificateNumber,
+          status: tool.status,
+          notes: tool.notes,
+          created_at: tool.createdAt,
+          updated_at: tool.updatedAt,
+        })
+      }
+    } catch (error) {
+      console.error(`Failed to sync tool ${id}:`, error)
+      // Don't throw - just log and continue
     }
   }
 

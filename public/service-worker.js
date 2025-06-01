@@ -1,90 +1,161 @@
-// Service Worker for CalibrationPro PWA
-const CACHE_NAME = "calibration-pro-v1"
+// Service Worker for CalibrationPro PWA - Enhanced for full offline functionality
+const CACHE_NAME = "calibration-pro-v2"
 const OFFLINE_URL = "/offline"
 
-// Assets to cache immediately on install
+// Comprehensive list of assets to cache for full offline functionality
 const PRECACHE_ASSETS = [
   "/",
   "/offline",
   "/manifest.json",
-  "/icons/icon-192x192.png",
-  "/icons/icon-512x512.png",
-  "/icons/maskable-icon.png",
+  "/calibrations",
+  "/calibrations/new",
+  "/calibrations/form/load_cell",
+  "/calibrations/form/speed_displacement",
+  "/customers",
+  "/customers/new",
+  "/equipment",
+  "/equipment/new",
+  "/tools",
+  "/tools/new",
+  "/upcoming",
+  // Add common static assets
+  "/_next/static/css/app/layout.css",
+  "/_next/static/chunks/webpack.js",
+  "/_next/static/chunks/main.js",
+  "/_next/static/chunks/pages/_app.js",
 ]
 
-// Install event - precache critical assets
+// Install event - precache all critical assets
 self.addEventListener("install", (event) => {
+  console.log("Service Worker installing...")
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log("Opened cache")
-      return cache.addAll(PRECACHE_ASSETS)
+      console.log("Opened cache, adding precache assets")
+      // Add assets one by one to avoid failures
+      return Promise.allSettled(
+        PRECACHE_ASSETS.map((url) =>
+          cache.add(url).catch((err) => {
+            console.warn(`Failed to cache ${url}:`, err)
+            return null
+          }),
+        ),
+      )
     }),
   )
   // Activate immediately
   self.skipWaiting()
 })
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control
 self.addEventListener("activate", (event) => {
+  console.log("Service Worker activating...")
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName)
-          }
+    Promise.all([
+      // Clean up old caches
+      caches
+        .keys()
+        .then((cacheNames) => {
+          return Promise.all(
+            cacheNames.map((cacheName) => {
+              if (cacheName !== CACHE_NAME) {
+                console.log("Deleting old cache:", cacheName)
+                return caches.delete(cacheName)
+              }
+            }),
+          )
         }),
-      )
-    }),
+      // Take control of all clients immediately
+      self.clients.claim(),
+    ]),
   )
-  // Take control of clients immediately
-  self.clients.claim()
 })
 
-// Fetch event - network first with cache fallback strategy
+// Fetch event - Cache First strategy for app pages, Network First for API calls
 self.addEventListener("fetch", (event) => {
-  // Skip non-GET requests and browser extensions
-  if (
-    event.request.method !== "GET" ||
-    event.request.url.startsWith("chrome-extension") ||
-    event.request.url.includes("extension") ||
-    // Skip Supabase API requests - we don't want to cache these
-    event.request.url.includes("supabase.co")
-  ) {
+  const url = new URL(event.request.url)
+
+  // Skip non-GET requests
+  if (event.request.method !== "GET") {
     return
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // If valid response, clone it and store in cache
-        if (response && response.status === 200) {
-          const responseClone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone)
-          })
-        }
-        return response
-      })
-      .catch(() => {
-        // If network fails, try to serve from cache
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse
-          }
-          // If not in cache, serve offline page for navigation requests
-          if (event.request.mode === "navigate") {
-            return caches.match(OFFLINE_URL)
-          }
-          // Return 404 for other requests
-          return new Response(null, { status: 404 })
-        })
-      }),
-  )
+  // Skip browser extensions and chrome-extension URLs
+  if (url.protocol === "chrome-extension:" || url.href.includes("extension")) {
+    return
+  }
+
+  // Skip Supabase API requests - these should fail gracefully when offline
+  if (url.href.includes("supabase.co")) {
+    return
+  }
+
+  // Handle navigation requests (page loads)
+  if (event.request.mode === "navigate") {
+    event.respondWith(handleNavigationRequest(event.request))
+    return
+  }
+
+  // Handle static assets and API routes
+  event.respondWith(handleResourceRequest(event.request))
 })
+
+// Handle navigation requests with cache-first strategy
+async function handleNavigationRequest(request) {
+  try {
+    // Try cache first for navigation
+    const cachedResponse = await caches.match(request)
+    if (cachedResponse) {
+      console.log("Serving navigation from cache:", request.url)
+      return cachedResponse
+    }
+
+    // Try network if not in cache
+    const networkResponse = await fetch(request)
+    if (networkResponse && networkResponse.status === 200) {
+      // Cache successful network responses
+      const cache = await caches.open(CACHE_NAME)
+      cache.put(request, networkResponse.clone())
+      return networkResponse
+    }
+
+    throw new Error("Network response not ok")
+  } catch (error) {
+    console.log("Navigation request failed, serving offline page:", error)
+    // Serve offline page for failed navigation
+    const offlineResponse = await caches.match(OFFLINE_URL)
+    return offlineResponse || new Response("Offline", { status: 503 })
+  }
+}
+
+// Handle resource requests (JS, CSS, images, etc.)
+async function handleResourceRequest(request) {
+  try {
+    // Try cache first
+    const cachedResponse = await caches.match(request)
+    if (cachedResponse) {
+      return cachedResponse
+    }
+
+    // Try network
+    const networkResponse = await fetch(request)
+    if (networkResponse && networkResponse.status === 200) {
+      // Cache successful responses
+      const cache = await caches.open(CACHE_NAME)
+      cache.put(request, networkResponse.clone())
+      return networkResponse
+    }
+
+    throw new Error("Network response not ok")
+  } catch (error) {
+    console.log("Resource request failed:", request.url, error)
+    // Return a basic response for failed resources
+    return new Response("", { status: 404 })
+  }
+}
 
 // Background sync for offline data
 self.addEventListener("sync", (event) => {
+  console.log("Background sync triggered:", event.tag)
   if (event.tag === "sync-data") {
     event.waitUntil(syncData())
   }
@@ -93,6 +164,7 @@ self.addEventListener("sync", (event) => {
 // Function to sync data with server
 async function syncData() {
   try {
+    console.log("Starting background sync...")
     // Send message to client to initiate sync
     const clients = await self.clients.matchAll()
     clients.forEach((client) => {
@@ -101,8 +173,6 @@ async function syncData() {
       })
     })
 
-    // The actual sync will be handled by the client
-    // This just triggers the process
     return true
   } catch (error) {
     console.error("Background sync failed:", error)
@@ -112,7 +182,7 @@ async function syncData() {
 
 // Listen for push notifications
 self.addEventListener("push", (event) => {
-  const data = event.data.json()
+  const data = event.data ? event.data.json() : {}
 
   const options = {
     body: data.body || "New notification",
@@ -129,6 +199,12 @@ self.addEventListener("push", (event) => {
 // Handle notification clicks
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-
   event.waitUntil(clients.openWindow(event.notification.data.url))
+})
+
+// Handle messages from the main thread
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting()
+  }
 })

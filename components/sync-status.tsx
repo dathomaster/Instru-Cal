@@ -1,19 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { syncManager, type SyncStatus } from "@/lib/sync"
+import { useState, useEffect } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Wifi, WifiOff, RefreshCw, Check, AlertCircle } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { Wifi, WifiOff, RefreshCw, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { syncManager, type SyncStatus } from "@/lib/sync"
 
 export function SyncStatusIndicator() {
   const [status, setStatus] = useState<SyncStatus>({
-    status: "online",
+    status: "offline",
     pendingItems: 0,
   })
 
   useEffect(() => {
-    // Subscribe to sync status changes
     const unsubscribe = syncManager.subscribe(setStatus)
     return unsubscribe
   }, [])
@@ -21,17 +20,33 @@ export function SyncStatusIndicator() {
   const getStatusIcon = () => {
     switch (status.status) {
       case "online":
-        return <Wifi className="h-4 w-4 text-green-500" />
-      case "offline":
-        return <WifiOff className="h-4 w-4 text-gray-500" />
-      case "syncing":
-        return <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />
-      case "synced":
-        return <Check className="h-4 w-4 text-green-500" />
-      case "error":
-        return <AlertCircle className="h-4 w-4 text-red-500" />
-      default:
         return <Wifi className="h-4 w-4" />
+      case "offline":
+        return <WifiOff className="h-4 w-4" />
+      case "syncing":
+        return <RefreshCw className="h-4 w-4 animate-spin" />
+      case "synced":
+        return <CheckCircle className="h-4 w-4" />
+      case "error":
+        return <AlertCircle className="h-4 w-4" />
+      default:
+        return <Clock className="h-4 w-4" />
+    }
+  }
+
+  const getStatusColor = () => {
+    switch (status.status) {
+      case "online":
+      case "synced":
+        return "bg-green-600"
+      case "offline":
+        return "bg-gray-600"
+      case "syncing":
+        return "bg-blue-600"
+      case "error":
+        return "bg-red-600"
+      default:
+        return "bg-gray-600"
     }
   }
 
@@ -40,7 +55,7 @@ export function SyncStatusIndicator() {
       case "online":
         return "Online"
       case "offline":
-        return "Offline"
+        return "Offline Mode"
       case "syncing":
         return "Syncing..."
       case "synced":
@@ -52,37 +67,36 @@ export function SyncStatusIndicator() {
     }
   }
 
-  const handleForceSync = () => {
-    syncManager.forceSync()
+  const formatLastSync = () => {
+    if (!status.lastSyncTime) return "Never"
+    const date = new Date(status.lastSyncTime)
+    return date.toLocaleTimeString()
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1 text-sm">
+    <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+      <Badge variant="secondary" className={`${getStatusColor()} text-white`}>
         {getStatusIcon()}
-        <span>{getStatusText()}</span>
+        <span className="ml-2">{getStatusText()}</span>
         {status.pendingItems > 0 && (
-          <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-            {status.pendingItems} pending
-          </span>
+          <span className="ml-2 bg-white text-gray-900 px-2 py-0.5 rounded-full text-xs">{status.pendingItems}</span>
         )}
-      </div>
-      {status.lastSyncTime && status.status !== "syncing" && (
-        <div className="text-xs text-gray-500">
-          Last sync: {formatDistanceToNow(status.lastSyncTime, { addSuffix: true })}
-        </div>
-      )}
-      {status.status !== "syncing" && status.pendingItems > 0 && (
+      </Badge>
+
+      {status.status === "online" && status.pendingItems > 0 && (
         <Button
-          variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0"
-          onClick={handleForceSync}
-          disabled={status.status === "offline"}
-          title="Force sync"
+          variant="outline"
+          onClick={() => syncManager.forceSync()}
+          disabled={status.status === "syncing"}
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className={`h-3 w-3 mr-1 ${status.status === "syncing" ? "animate-spin" : ""}`} />
+          Sync Now
         </Button>
+      )}
+
+      {status.lastSyncTime && (
+        <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded border">Last sync: {formatLastSync()}</div>
       )}
     </div>
   )

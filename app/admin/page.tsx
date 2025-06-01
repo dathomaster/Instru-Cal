@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, Mail, Shield, Plus, Trash2, Eye, EyeOff } from "lucide-react"
+import { Users, Mail, Shield, Plus, Trash2, Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { useState, useEffect } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
 
@@ -149,6 +149,14 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Add back button */}
+        <div className="mb-4">
+          <Button variant="outline" onClick={() => window.history.back()} className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </div>
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
           <p className="text-gray-600">Manage employees and system settings</p>

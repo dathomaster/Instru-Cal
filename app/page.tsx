@@ -5,9 +5,10 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Users, Wrench, FileText, Calendar, AlertTriangle, Settings } from "lucide-react"
+import { Users, Wrench, FileText, Calendar, AlertTriangle, Settings, LogOut, User } from "lucide-react"
 import { calibrationDB } from "@/lib/db"
 import { SyncStatusIndicator } from "@/components/sync-status"
+import { useAuth } from "@/components/auth-provider"
 
 interface RecentActivity {
   id: string
@@ -201,7 +202,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <h1 className="text-2xl font-bold text-gray-900">CalibrationPro</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
               <SyncStatusIndicator />
               {stats.upcomingCalibrations > 0 && (
                 <Badge variant="outline" className="text-yellow-600 border-yellow-600">
@@ -209,6 +210,14 @@ export default function Dashboard() {
                   {stats.upcomingCalibrations} due soon
                 </Badge>
               )}
+              {/* Add admin link */}
+              <Link href="/admin">
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-1" />
+                  Admin
+                </Button>
+              </Link>
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -429,6 +438,23 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </main>
+    </div>
+  )
+}
+
+function UserMenu() {
+  const { user, signOut } = useAuth()
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 text-sm text-gray-600">
+        <User className="h-4 w-4" />
+        <span>{user?.email}</span>
+      </div>
+      <Button variant="outline" size="sm" onClick={signOut}>
+        <LogOut className="h-4 w-4 mr-1" />
+        Sign Out
+      </Button>
     </div>
   )
 }

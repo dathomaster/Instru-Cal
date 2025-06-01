@@ -56,7 +56,7 @@ export default function CalibrationDetailPage() {
   // Auto-print if print parameter is present
   useEffect(() => {
     if (shouldPrint && !loading && calibration && !error) {
-      console.log("🖨️ Auto-print triggered")
+      console.log("🖨️ Auto-print triggered (offline capable)")
       // Small delay to ensure the page is fully rendered
       setTimeout(() => {
         console.log("🖨️ Executing print...")
@@ -64,7 +64,7 @@ export default function CalibrationDetailPage() {
         // Remove the print parameter from URL after printing
         const newUrl = window.location.pathname
         window.history.replaceState({}, "", newUrl)
-      }, 1500)
+      }, 1000) // Reduced delay for offline use
     }
   }, [loading, calibration, error, shouldPrint])
 
@@ -144,7 +144,7 @@ export default function CalibrationDetailPage() {
 
   const handlePrint = () => {
     console.log("🖨️ Manual print triggered")
-    // Ensure all images and content are loaded before printing
+    // Ensure all content is loaded before printing - works offline
     setTimeout(() => {
       console.log("🖨️ Executing manual print...")
       window.print()

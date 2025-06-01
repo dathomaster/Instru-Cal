@@ -10,13 +10,28 @@ export function SyncStatusIndicator() {
     status: "offline",
     pendingItems: 0,
   })
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : false)
 
   useEffect(() => {
+    // Listen for online/offline events
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
     const unsubscribe = syncManager.subscribe(setStatus)
-    return unsubscribe
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+      unsubscribe()
+    }
   }, [])
 
   const getStatusIcon = () => {
+    if (!isOnline) return <WifiOff className="h-3 w-3" />
+
     switch (status.status) {
       case "online":
         return <Wifi className="h-3 w-3" />
@@ -34,6 +49,8 @@ export function SyncStatusIndicator() {
   }
 
   const getStatusColor = () => {
+    if (!isOnline) return "bg-gray-600"
+
     switch (status.status) {
       case "online":
       case "synced":
@@ -50,6 +67,8 @@ export function SyncStatusIndicator() {
   }
 
   const getStatusText = () => {
+    if (!isOnline) return "Offline"
+
     switch (status.status) {
       case "online":
         return "Online"

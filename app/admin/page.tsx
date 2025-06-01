@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, Mail, Shield, Plus, Trash2 } from "lucide-react"
+import { Users, Mail, Shield, Plus, Trash2, Link } from "lucide-react"
 import { useState, useEffect } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
 
@@ -25,33 +25,28 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [signupLink, setSignupLink] = useState("")
   const supabase = createClientSupabaseClient()
 
   useEffect(() => {
     if (isAdmin) {
       loadEmployees()
+      // Generate a signup link with the current URL
+      const baseUrl = window.location.origin
+      setSignupLink(`${baseUrl}/signup?invited=true`)
     }
   }, [isAdmin])
 
   const loadEmployees = async () => {
     try {
       // For now, we'll simulate employee data since we can't access auth.users directly
-      const mockEmployees: Employee[] = [
-        {
-          id: "1",
-          email: "employee1@company.com",
-          created_at: "2024-01-15",
-          last_sign_in_at: "2024-01-20",
-        },
-        {
-          id: "2",
-          email: "employee2@company.com",
-          created_at: "2024-01-16",
-          last_sign_in_at: "2024-01-19",
-        },
-      ]
-      setEmployees(mockEmployees)
+      const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false })
+
+      if (error) throw error
+
+      setEmployees(data || [])
     } catch (err) {
+      console.error("Failed to load employees:", err)
       setError("Failed to load employees")
     }
   }
@@ -63,19 +58,28 @@ export default function AdminPage() {
     setSuccess("")
 
     try {
-      // Send invitation email (this would normally create an account)
-      setSuccess(`Invitation sent to ${newEmployeeEmail}! They can now create an account.`)
+      // Add employee to our employees table
+      const { data, error } = await supabase
+        .from("employees")
+        .insert([
+          {
+            email: newEmployeeEmail,
+            created_at: new Date().toISOString(),
+            invited_by: user?.id || "admin",
+          },
+        ])
+        .select()
+
+      if (error) throw error
+
+      setSuccess(`Employee ${newEmployeeEmail} added! Share the signup link with them.`)
       setNewEmployeeEmail("")
 
-      // Add to mock employee list
-      const newEmployee: Employee = {
-        id: Date.now().toString(),
-        email: newEmployeeEmail,
-        created_at: new Date().toISOString().split("T")[0],
-      }
-      setEmployees([...employees, newEmployee])
+      // Refresh employee list
+      loadEmployees()
     } catch (err) {
-      setError("Failed to send invitation")
+      console.error("Failed to add employee:", err)
+      setError("Failed to add employee")
     } finally {
       setLoading(false)
     }
@@ -83,9 +87,23 @@ export default function AdminPage() {
 
   const removeEmployee = async (employeeId: string) => {
     if (confirm("Are you sure you want to remove this employee?")) {
-      setEmployees(employees.filter((emp) => emp.id !== employeeId))
-      setSuccess("Employee removed successfully")
+      try {
+        const { error } = await supabase.from("employees").delete().eq("id", employeeId)
+
+        if (error) throw error
+
+        setEmployees(employees.filter((emp) => emp.id !== employeeId))
+        setSuccess("Employee removed successfully")
+      } catch (err) {
+        console.error("Failed to remove employee:", err)
+        setError("Failed to remove employee")
+      }
     }
+  }
+
+  const copySignupLink = () => {
+    navigator.clipboard.writeText(signupLink)
+    setSuccess("Signup link copied to clipboard!")
   }
 
   if (!isAdmin) {
@@ -128,7 +146,7 @@ export default function AdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Plus className="h-5 w-5" />
-                Invite Employee
+                Add Employee
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -151,9 +169,22 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? "Sending..." : "Send Invitation"}
+                  {loading ? "Adding..." : "Add Employee"}
                 </Button>
               </form>
+
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Signup Link for Employees</h3>
+                <div className="flex items-center gap-2">
+                  <Input value={signupLink} readOnly className="bg-gray-50" />
+                  <Button onClick={copySignupLink} size="icon" variant="outline">
+                    <Link className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Share this link with your employees so they can create their accounts.
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -172,8 +203,9 @@ export default function AdminPage() {
                     <div>
                       <p className="font-medium text-gray-900">{employee.email}</p>
                       <p className="text-sm text-gray-500">
-                        Joined: {employee.created_at}
-                        {employee.last_sign_in_at && ` • Last login: ${employee.last_sign_in_at}`}
+                        Added: {new Date(employee.created_at).toLocaleDateString()}
+                        {employee.last_sign_in_at &&
+                          ` • Last login: ${new Date(employee.last_sign_in_at).toLocaleDateString()}`}
                       </p>
                     </div>
                     <Button
@@ -187,7 +219,7 @@ export default function AdminPage() {
                   </div>
                 ))}
                 {employees.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No employees yet. Invite your first employee!</p>
+                  <p className="text-gray-500 text-center py-4">No employees yet. Add your first employee!</p>
                 )}
               </div>
             </CardContent>

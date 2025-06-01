@@ -518,8 +518,47 @@ export default function SpeedDisplacementCalibrationPage() {
     displacementDownRun2,
   ])
 
-  const handlePrint = () => {
-    window.print()
+  const handlePrint = async () => {
+    try {
+      // First save the calibration
+      const calibrationId = Date.now().toString()
+      const calibration = {
+        id: calibrationId,
+        customerId: customerId || "",
+        equipmentId: equipmentId || "",
+        type: "speed_displacement" as const,
+        technician: calibrationData.technician,
+        date: calibrationData.date,
+        temperature: calibrationData.temperature,
+        humidity: calibrationData.humidity,
+        data: {
+          speedTolerance: calibrationData.speedTolerance,
+          displacementTolerance: calibrationData.displacementTolerance,
+          speedUpRun1,
+          speedDownRun1,
+          speedUpRun2,
+          speedDownRun2,
+          displacementUpRun1,
+          displacementDownRun1,
+          displacementUpRun2,
+          displacementDownRun2,
+          speedOverview,
+          displacementOverview,
+        },
+        result: overallResult as "pass" | "fail",
+        synced: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      await calibrationDB.addCalibration(calibration)
+
+      // Navigate to the certificate page with auto-print
+      window.location.href = `/calibrations/${calibrationId}/report?print=true`
+    } catch (error) {
+      console.error("Error saving calibration for print:", error)
+      alert("Error preparing calibration for print. Please try again.")
+    }
   }
 
   const handleSave = async () => {

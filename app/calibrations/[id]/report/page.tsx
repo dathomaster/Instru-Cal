@@ -50,6 +50,20 @@ export default function CalibrationDetailPage() {
     loadCalibrationData()
   }, [calibrationId])
 
+  // Auto-print if print parameter is present
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get("print") === "true" && !loading && calibration) {
+      // Small delay to ensure the page is fully rendered
+      setTimeout(() => {
+        window.print()
+        // Remove the print parameter from URL after printing
+        const newUrl = window.location.pathname
+        window.history.replaceState({}, "", newUrl)
+      }, 500)
+    }
+  }, [loading, calibration])
+
   const loadCalibrationData = async () => {
     try {
       await calibrationDB.init()

@@ -529,8 +529,47 @@ export default function LoadCellCalibrationPage() {
     }
   }
 
-  const handlePrint = () => {
-    window.print()
+  const handlePrint = async () => {
+    try {
+      // First save the calibration
+      const calibrationId = Date.now().toString()
+      const calibration = {
+        id: calibrationId,
+        customerId: customerId || "",
+        equipmentId: equipmentId || "",
+        type: "load_cell" as const,
+        technician: calibrationData.technician,
+        date: calibrationData.date,
+        temperature: calibrationData.temperature,
+        humidity: calibrationData.humidity,
+        toolsUsed: calibrationData.toolsUsed,
+        data: {
+          tolerance: calibrationData.tolerance,
+          capacity: calibrationData.capacity,
+          tempBefore: calibrationData.tempBefore,
+          tempAfter: calibrationData.tempAfter,
+          gravityMultiplier: calibrationData.gravityMultiplier,
+          tensionRun1,
+          tensionRun2,
+          compressionRun1,
+          compressionRun2,
+          tensionOverview,
+          compressionOverview,
+        },
+        result: overallResult as "pass" | "fail",
+        synced: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      await calibrationDB.addCalibration(calibration)
+
+      // Navigate to the certificate page with auto-print
+      window.location.href = `/calibrations/${calibrationId}/report?print=true`
+    } catch (error) {
+      console.error("Error saving calibration for print:", error)
+      alert("Error preparing calibration for print. Please try again.")
+    }
   }
 
   const handleSave = async () => {

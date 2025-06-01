@@ -7,35 +7,33 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, Mail, Shield, Plus, Trash2, Link, CheckCircle, Clock } from "lucide-react"
+import { Users, Mail, Shield, Plus, Trash2, Eye, EyeOff } from "lucide-react"
 import { useState, useEffect } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
 
 interface Employee {
   id: string
-  email: string
+  username: string
+  password: string
   created_at: string
   last_sign_in_at?: string
   is_active: boolean
-  user_id?: string
 }
 
 export default function AdminPage() {
   const { user, isAdmin } = useAuth()
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
+  const [newUsername, setNewUsername] = useState("")
+  const [newPassword, setNewPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [signupLink, setSignupLink] = useState("")
+  const [showPassword, setShowPassword] = useState<Record<string, boolean>>({})
   const supabase = createClientSupabaseClient()
 
   useEffect(() => {
     if (isAdmin) {
       loadEmployees()
-      // Generate a signup link with the current URL
-      const baseUrl = window.location.origin
-      setSignupLink(`${baseUrl}/signup?invited=true`)
     }
   }, [isAdmin])
 
@@ -56,7 +54,7 @@ export default function AdminPage() {
     }
   }
 
-  const inviteEmployee = async (e: React.FormEvent) => {
+  const addEmployee = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError("")
@@ -66,12 +64,12 @@ export default function AdminPage() {
       // Check if employee already exists
       const { data: existingEmployee } = await supabase
         .from("employees")
-        .select("email")
-        .eq("email", newEmployeeEmail)
+        .select("username")
+        .eq("username", newUsername)
         .single()
 
       if (existingEmployee) {
-        setError("Employee with this email already exists")
+        setError("Employee with this username already exists")
         setLoading(false)
         return
       }
@@ -81,8 +79,8 @@ export default function AdminPage() {
         .from("employees")
         .insert([
           {
-            email: newEmployeeEmail,
-            invited_by: "admin",
+            username: newUsername,
+            password: newPassword, // In a real app, you'd hash this
             is_active: true,
           },
         ])
@@ -93,8 +91,9 @@ export default function AdminPage() {
         throw error
       }
 
-      setSuccess(`✅ Employee ${newEmployeeEmail} added successfully! Share the signup link with them.`)
-      setNewEmployeeEmail("")
+      setSuccess(`✅ Employee ${newUsername} added successfully!`)
+      setNewUsername("")
+      setNewPassword("")
 
       // Add to local state immediately
       if (data && data[0]) {
@@ -108,15 +107,15 @@ export default function AdminPage() {
     }
   }
 
-  const removeEmployee = async (employeeId: string, employeeEmail: string) => {
-    if (confirm(`Are you sure you want to remove ${employeeEmail}?`)) {
+  const removeEmployee = async (employeeId: string, employeeUsername: string) => {
+    if (confirm(`Are you sure you want to remove ${employeeUsername}?`)) {
       try {
         const { error } = await supabase.from("employees").delete().eq("id", employeeId)
 
         if (error) throw error
 
         setEmployees(employees.filter((emp) => emp.id !== employeeId))
-        setSuccess(`Employee ${employeeEmail} removed successfully`)
+        setSuccess(`Employee ${employeeUsername} removed successfully`)
       } catch (err: any) {
         console.error("Failed to remove employee:", err)
         setError(`Failed to remove employee: ${err.message}`)
@@ -124,9 +123,11 @@ export default function AdminPage() {
     }
   }
 
-  const copySignupLink = () => {
-    navigator.clipboard.writeText(signupLink)
-    setSuccess("📋 Signup link copied to clipboard! Share this with your employees.")
+  const togglePasswordVisibility = (id: string) => {
+    setShowPassword((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
   }
 
   if (!isAdmin) {
@@ -164,7 +165,7 @@ export default function AdminPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Invite Employee */}
+          {/* Add Employee */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -173,42 +174,47 @@ export default function AdminPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={inviteEmployee} className="space-y-4">
+              <form onSubmit={addEmployee} className="space-y-4">
                 <div>
-                  <label htmlFor="employeeEmail" className="block text-sm font-medium text-gray-700 mb-1">
-                    Employee Email
+                  <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                    Username
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
-                      id="employeeEmail"
-                      type="email"
-                      value={newEmployeeEmail}
-                      onChange={(e) => setNewEmployeeEmail(e.target.value)}
-                      placeholder="employee@company.com"
+                      id="username"
+                      type="text"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      placeholder="employee1"
                       className="pl-10"
                       required
                     />
                   </div>
                 </div>
+
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      id="password"
+                      type="text"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="password123"
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <Button type="submit" disabled={loading} className="w-full">
                   {loading ? "Adding..." : "Add Employee"}
                 </Button>
               </form>
-
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">📱 Employee Signup Link</h3>
-                <div className="flex items-center gap-2">
-                  <Input value={signupLink} readOnly className="bg-gray-50 text-sm" />
-                  <Button onClick={copySignupLink} size="icon" variant="outline" title="Copy link">
-                    <Link className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  💡 <strong>How it works:</strong> Add employee email above, then share this link with them to create
-                  their account.
-                </p>
-              </div>
             </CardContent>
           </Card>
 
@@ -217,7 +223,7 @@ export default function AdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Authorized Employees ({employees.length})
+                Employees ({employees.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -226,26 +232,37 @@ export default function AdminPage() {
                   <div key={employee.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{employee.email}</p>
-                        {employee.user_id ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" title="Account created" />
-                        ) : (
-                          <Clock className="h-4 w-4 text-orange-500" title="Pending signup" />
-                        )}
+                        <p className="font-medium text-gray-900">{employee.username}</p>
                       </div>
-                      <p className="text-sm text-gray-500">
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-sm text-gray-500">
+                          Password:{" "}
+                          <span className="font-mono bg-gray-100 px-1 rounded">
+                            {showPassword[employee.id] ? employee.password : "••••••••"}
+                          </span>
+                        </p>
+                        <button
+                          onClick={() => togglePasswordVisibility(employee.id)}
+                          className="text-gray-400 hover:text-gray-600"
+                          type="button"
+                        >
+                          {showPassword[employee.id] ? (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
                         Added: {new Date(employee.created_at).toLocaleDateString()}
                         {employee.last_sign_in_at &&
                           ` • Last login: ${new Date(employee.last_sign_in_at).toLocaleDateString()}`}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {employee.user_id ? "✅ Account Active" : "⏳ Waiting for signup"}
                       </p>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => removeEmployee(employee.id, employee.email)}
+                      onClick={() => removeEmployee(employee.id, employee.username)}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -270,23 +287,23 @@ export default function AdminPage() {
             <CardContent className="p-6 text-center">
               <Users className="h-8 w-8 text-blue-600 mx-auto mb-2" />
               <h3 className="text-2xl font-bold text-gray-900">{employees.length}</h3>
-              <p className="text-gray-600">Authorized Employees</p>
+              <p className="text-gray-600">Total Employees</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6 text-center">
-              <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <h3 className="text-2xl font-bold text-gray-900">{employees.filter((emp) => emp.user_id).length}</h3>
-              <p className="text-gray-600">Active Accounts</p>
+              <Shield className="h-8 w-8 text-green-600 mx-auto mb-2" />
+              <h3 className="text-2xl font-bold text-gray-900">Active</h3>
+              <p className="text-gray-600">System Status</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6 text-center">
-              <Clock className="h-8 w-8 text-orange-600 mx-auto mb-2" />
-              <h3 className="text-2xl font-bold text-gray-900">{employees.filter((emp) => !emp.user_id).length}</h3>
-              <p className="text-gray-600">Pending Signups</p>
+              <Mail className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <h3 className="text-2xl font-bold text-gray-900">5</h3>
+              <p className="text-gray-600">Max Employees</p>
             </CardContent>
           </Card>
         </div>

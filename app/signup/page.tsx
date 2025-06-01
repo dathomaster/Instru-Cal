@@ -35,6 +35,12 @@ export default function SignupPage() {
       return
     }
 
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long")
+      setLoading(false)
+      return
+    }
+
     try {
       // Check if email is in the employees table (if invited)
       if (isInvited) {
@@ -51,6 +57,8 @@ export default function SignupPage() {
         }
       }
 
+      console.log("Creating account for:", email)
+
       // Create the user account
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -60,14 +68,24 @@ export default function SignupPage() {
         },
       })
 
-      if (error) throw error
+      if (error) {
+        console.error("Signup error:", error)
+        throw error
+      }
+
+      console.log("Signup successful:", data)
 
       // Update employee record with user_id if invited
       if (isInvited && data.user) {
-        await supabase
+        console.log("Updating employee record with user_id:", data.user.id)
+        const { error: updateError } = await supabase
           .from("employees")
           .update({ user_id: data.user.id, last_sign_in_at: new Date().toISOString() })
           .eq("email", email)
+
+        if (updateError) {
+          console.error("Error updating employee record:", updateError)
+        }
       }
 
       setSuccess(true)
@@ -89,9 +107,12 @@ export default function SignupPage() {
             <p className="text-gray-600 mb-6">
               Your account has been created successfully. You can now log in to access the calibration app.
             </p>
-            <Button asChild className="w-full">
-              <Link href="/">Go to App</Link>
-            </Button>
+            <div className="space-y-3">
+              <Button asChild className="w-full">
+                <Link href="/">Go to App</Link>
+              </Button>
+              <p className="text-sm text-gray-500">Use the email and password you just created to log in.</p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -137,9 +158,9 @@ export default function SignupPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a secure password"
+                placeholder="Create a secure password (min 6 characters)"
                 required
-                minLength={8}
+                minLength={6}
               />
             </div>
             <div className="space-y-2">

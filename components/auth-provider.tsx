@@ -5,10 +5,16 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState, useRef } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
 import { LoginForm } from "@/components/login-form"
-import type { User } from "@supabase/supabase-js"
+
+interface Employee {
+  id: string
+  username: string
+  is_active: boolean
+  last_sign_in_at?: string
+}
 
 interface AuthContextType {
-  user: User | null
+  user: Employee | null
   isAdmin: boolean
   loading: boolean
   signOut: () => Promise<void>
@@ -17,7 +23,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<Employee | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createClientSupabaseClient()
@@ -40,69 +46,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Check for regular user session
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        if (session?.user) {
-          setUser(session.user)
+        // Check for employee session
+        const employeeUser = localStorage.getItem("employeeUser")
+        if (employeeUser) {
+          setUser(JSON.parse(employeeUser))
           setIsAdmin(false)
-
-          // Update employee last sign in
-          await supabase
-            .from("employees")
-            .update({ last_sign_in_at: new Date().toISOString() })
-            .eq("user_id", session.user.id)
+          setLoading(false)
+          return
         }
+
+        // No session found
+        setUser(null)
+        setIsAdmin(false)
       } catch (error) {
         console.error("Auth initialization error:", error)
+        // Clear any potentially corrupted session data
+        localStorage.removeItem("adminUser")
+        localStorage.removeItem("isAdmin")
+        localStorage.removeItem("employeeUser")
+        setUser(null)
+        setIsAdmin(false)
       } finally {
         setLoading(false)
       }
     }
 
     initAuth()
-
-    // Listen for auth changes (only for regular users)
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (localStorage.getItem("isAdmin") === "true") return // Don't override admin session
-
-      if (session?.user) {
-        setUser(session.user)
-        setIsAdmin(false)
-
-        // Update employee last sign in
-        try {
-          await supabase
-            .from("employees")
-            .update({ last_sign_in_at: new Date().toISOString() })
-            .eq("user_id", session.user.id)
-        } catch (error) {
-          console.error("Error updating last sign in:", error)
-        }
-      } else {
-        setUser(null)
-        setIsAdmin(false)
-      }
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [supabase.auth, supabase])
+  }, [])
 
   const signOut = async () => {
     try {
-      // Clear admin session
+      // Clear all sessions
       localStorage.removeItem("adminUser")
       localStorage.removeItem("isAdmin")
-
-      // Sign out regular user
-      await supabase.auth.signOut()
+      localStorage.removeItem("employeeUser")
 
       setUser(null)
       setIsAdmin(false)
+
+      // Force reload to clear any cached state
+      window.location.href = "/"
     } catch (error) {
       console.error("Sign out error:", error)
     }

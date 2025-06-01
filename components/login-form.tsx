@@ -8,14 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Mail, Lock, UserCheck } from "lucide-react"
+import { Shield, User, Lock, UserCheck } from "lucide-react"
 
 export function LoginForm() {
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [showSignUp, setShowSignUp] = useState(false)
   const [showAdminLogin, setShowAdminLogin] = useState(false)
   const [adminUsername, setAdminUsername] = useState("")
   const [adminPassword, setAdminPassword] = useState("")
@@ -27,14 +26,28 @@ export function LoginForm() {
     setError("")
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      // Check if username/password match in employees table
+      const { data, error } = await supabase
+        .from("employees")
+        .select("*")
+        .eq("username", username)
+        .eq("password", password)
+        .single()
 
-      if (error) {
-        setError(error.message)
+      if (error || !data) {
+        setError("Invalid username or password")
+        setLoading(false)
+        return
       }
+
+      // Create a session for the employee
+      localStorage.setItem("employeeUser", JSON.stringify(data))
+
+      // Update last sign in
+      await supabase.from("employees").update({ last_sign_in_at: new Date().toISOString() }).eq("id", data.id)
+
+      // Force reload to trigger auth provider
+      window.location.reload()
     } catch (err) {
       setError("An error occurred during login")
     } finally {
@@ -56,8 +69,8 @@ export function LoginForm() {
           "adminUser",
           JSON.stringify({
             id: "admin-user",
-            email: "admin@calibrationpro.com",
-            user_metadata: { isAdmin: true },
+            username: "admin",
+            is_active: true,
           }),
         )
         // Force a page reload to trigger auth provider update
@@ -67,32 +80,6 @@ export function LoginForm() {
       }
     } catch (err) {
       setError("An error occurred during admin login")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      })
-
-      if (error) {
-        setError(error.message)
-      } else {
-        alert("Account created! Check your email to confirm your account.")
-      }
-    } catch (err) {
-      setError("An error occurred during signup")
     } finally {
       setLoading(false)
     }
@@ -179,22 +166,22 @@ export function LoginForm() {
             <Shield className="h-6 w-6 text-blue-600" />
           </div>
           <CardTitle className="text-2xl">CalibrationPro</CardTitle>
-          <p className="text-gray-600">{showSignUp ? "Create an employee account" : "Employee sign in"}</p>
+          <p className="text-gray-600">Employee sign in</p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={showSignUp ? handleSignUp : handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                Username
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
                   className="pl-10"
                   required
                 />
@@ -212,10 +199,9 @@ export function LoginForm() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={showSignUp ? "Create a password (min 6 characters)" : "Enter your password"}
+                  placeholder="Enter your password"
                   className="pl-10"
                   required
-                  minLength={6}
                 />
               </div>
             </div>
@@ -227,27 +213,9 @@ export function LoginForm() {
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Processing..." : showSignUp ? "Create Account" : "Sign In"}
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-gray-600">
-            {showSignUp ? (
-              <>
-                <p>Already have an account?</p>
-                <Button variant="link" className="text-blue-600" onClick={() => setShowSignUp(false)}>
-                  Sign In
-                </Button>
-              </>
-            ) : (
-              <>
-                <p>Need an account?</p>
-                <Button variant="link" className="text-blue-600" onClick={() => setShowSignUp(true)}>
-                  Create Account
-                </Button>
-              </>
-            )}
-          </div>
 
           <div className="mt-8 pt-6 border-t border-gray-200 text-center">
             <Button

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { calibrationDB, type Calibration, type Customer, type Equipment } from "@/lib/db"
 import Link from "next/link"
-import { Edit, FileText, Plus, ArrowLeft } from "lucide-react"
+import { Edit, FileText, Plus, ArrowLeft, Search } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function CalibrationsPage() {
@@ -12,6 +12,7 @@ export default function CalibrationsPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
     async function loadData() {
@@ -44,6 +45,21 @@ export default function CalibrationsPage() {
     const eq = equipment.find((e) => e.id === equipmentId)
     return eq?.name || "Unknown Equipment"
   }
+
+  const filteredCalibrations = calibrations.filter((calibration) => {
+    const customerName = getCustomerName(calibration.customerId).toLowerCase()
+    const equipmentName = getEquipmentName(calibration.equipmentId).toLowerCase()
+    const technicianName = calibration.technician.toLowerCase()
+    const type = calibration.type.replace("_", " ").toLowerCase()
+    const search = searchTerm.toLowerCase()
+
+    return (
+      customerName.includes(search) ||
+      equipmentName.includes(search) ||
+      technicianName.includes(search) ||
+      type.includes(search)
+    )
+  })
 
   if (loading) {
     return (
@@ -85,15 +101,40 @@ export default function CalibrationsPage() {
         </Link>
       </div>
 
-      {calibrations.length === 0 ? (
+      {/* Search Bar */}
+      <div className="mb-6">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <input
+            type="text"
+            placeholder="Search calibrations..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      {filteredCalibrations.length === 0 ? (
         <div className="text-center py-10">
-          <p className="text-gray-500 mb-4">No calibrations found.</p>
-          <Link href="/calibrations/new">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Your First Calibration
-            </Button>
-          </Link>
+          {searchTerm ? (
+            <div>
+              <p className="text-gray-500 mb-4">No calibrations found matching "{searchTerm}".</p>
+              <Button variant="outline" onClick={() => setSearchTerm("")}>
+                Clear Search
+              </Button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-gray-500 mb-4">No calibrations found.</p>
+              <Link href="/calibrations/new">
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Your First Calibration
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <Table>
@@ -110,7 +151,7 @@ export default function CalibrationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {calibrations.map((calibration) => (
+            {filteredCalibrations.map((calibration) => (
               <TableRow key={calibration.id}>
                 <TableCell className="font-medium">{getCustomerName(calibration.customerId)}</TableCell>
                 <TableCell>{getEquipmentName(calibration.equipmentId)}</TableCell>

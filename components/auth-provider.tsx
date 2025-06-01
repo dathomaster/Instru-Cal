@@ -2,44 +2,74 @@
 
 import type React from "react"
 
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useRef } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
+import { LoginForm } from "@/components/login-form"
 import type { User } from "@supabase/supabase-js"
-import { LoginForm } from "./login-form"
 
 interface AuthContextType {
   user: User | null
+  isAdmin: boolean
   loading: boolean
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createClientSupabaseClient()
+  const initialized = useRef(false)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    if (initialized.current) return
+    initialized.current = true
 
-    // Listen for auth changes
+    const initAuth = async () => {
+      try {
+        // Check for admin session first
+        const adminUser = localStorage.getItem("adminUser")
+        const isAdminFlag = localStorage.getItem("isAdmin")
+
+        if (adminUser && isAdminFlag === "true") {
+          setUser(JSON.parse(adminUser))
+          setIsAdmin(true)
+          setLoading(false)
+          return
+        }
+
+        // Check for regular user session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (session?.user) {
+          setUser(session.user)
+          setIsAdmin(false)
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    initAuth()
+
+    // Listen for auth changes (only for regular users)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (localStorage.getItem("isAdmin") === "true") return // Don't override admin session
+
+      if (session?.user) {
+        setUser(session.user)
+        setIsAdmin(false)
+      } else {
+        setUser(null)
+        setIsAdmin(false)
+      }
       setLoading(false)
     })
 
@@ -47,25 +77,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase.auth])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      // Clear admin session
+      localStorage.removeItem("adminUser")
+      localStorage.removeItem("isAdmin")
+
+      // Sign out regular user
+      await supabase.auth.signOut()
+
+      setUser(null)
+      setIsAdmin(false)
+    } catch (error) {
+      console.error("Sign out error:", error)
+    }
   }
 
-  // Show login form if not authenticated
-  if (!loading && !user) {
-    return <LoginForm />
-  }
-
-  // Show loading spinner while checking auth
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
         </div>
       </div>
     )
   }
 
-  return <AuthContext.Provider value={{ user, loading, signOut }}>{children}</AuthContext.Provider>
+  if (!user) {
+    return <LoginForm />
+  }
+
+  return <AuthContext.Provider value={{ user, isAdmin, loading, signOut }}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
 }

@@ -8,13 +8,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Mail, Lock } from "lucide-react"
+import { Shield, Mail, Lock, UserCheck } from "lucide-react"
 
 export function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showSignUp, setShowSignUp] = useState(false)
+  const [showAdminLogin, setShowAdminLogin] = useState(false)
+  const [adminUsername, setAdminUsername] = useState("")
+  const [adminPassword, setAdminPassword] = useState("")
   const supabase = createClientSupabaseClient()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -22,39 +26,139 @@ export function LoginForm() {
     setLoading(true)
     setError("")
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) {
-      setError(error.message)
+      if (error) {
+        setError(error.message)
+      }
+    } catch (err) {
+      setError("An error occurred during login")
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
-  const handleCreateAdmin = async () => {
-    const adminEmail = prompt("Enter admin email:")
-    const adminPassword = prompt("Enter admin password (min 6 characters):")
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError("")
 
-    if (adminEmail && adminPassword && adminPassword.length >= 6) {
-      try {
-        const { error } = await supabase.auth.signUp({
-          email: adminEmail,
-          password: adminPassword,
-        })
-
-        if (error) {
-          alert("Error: " + error.message)
-        } else {
-          alert("Admin account created! You can now login with those credentials.")
-        }
-      } catch (err) {
-        alert("Error creating account")
+    try {
+      // Check hardcoded admin credentials
+      if (adminUsername === "calibadmin" && adminPassword === "CalibPro2024!") {
+        // Create a special admin session
+        localStorage.setItem("isAdmin", "true")
+        localStorage.setItem(
+          "adminUser",
+          JSON.stringify({
+            id: "admin",
+            email: "admin@system",
+            isAdmin: true,
+          }),
+        )
+        // Force a page reload to trigger auth provider update
+        window.location.reload()
+      } else {
+        setError("Invalid admin credentials")
       }
-    } else {
-      alert("Please enter valid email and password (min 6 characters)")
+    } catch (err) {
+      setError("An error occurred during admin login")
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError("")
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      })
+
+      if (error) {
+        setError(error.message)
+      } else {
+        alert("Account created! Check your email to confirm your account.")
+      }
+    } catch (err) {
+      setError("An error occurred during signup")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (showAdminLogin) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <UserCheck className="h-6 w-6 text-red-600" />
+            </div>
+            <CardTitle className="text-2xl">Admin Access</CardTitle>
+            <p className="text-gray-600">Enter admin credentials to manage the system</p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label htmlFor="adminUsername" className="block text-sm font-medium text-gray-700 mb-1">
+                  Admin Username
+                </label>
+                <Input
+                  id="adminUsername"
+                  type="text"
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value)}
+                  placeholder="Enter admin username"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="adminPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                  Admin Password
+                </label>
+                <Input
+                  id="adminPassword"
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="Enter admin password"
+                  required
+                />
+              </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Verifying..." : "Admin Login"}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <Button variant="link" onClick={() => setShowAdminLogin(false)}>
+                ← Back to Employee Login
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -65,10 +169,10 @@ export function LoginForm() {
             <Shield className="h-6 w-6 text-blue-600" />
           </div>
           <CardTitle className="text-2xl">CalibrationPro</CardTitle>
-          <p className="text-gray-600">Sign in to access your calibration data</p>
+          <p className="text-gray-600">{showSignUp ? "Create an employee account" : "Employee sign in"}</p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={showSignUp ? handleSignUp : handleLogin} className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email
@@ -98,9 +202,10 @@ export function LoginForm() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder={showSignUp ? "Create a password (min 6 characters)" : "Enter your password"}
                   className="pl-10"
                   required
+                  minLength={6}
                 />
               </div>
             </div>
@@ -112,21 +217,38 @@ export function LoginForm() {
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Processing..." : showSignUp ? "Create Account" : "Sign In"}
             </Button>
           </form>
 
-          {/* Temporary Admin Signup - Remove after first admin is created */}
-          <div className="mt-8 pt-8 border-t border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">First Time Setup</h3>
-            <p className="text-sm text-gray-600 mb-4">If this is your first time, create an admin account:</p>
-            <Button onClick={handleCreateAdmin} variant="outline" className="w-full">
-              Create First Admin Account
-            </Button>
+          <div className="mt-6 text-center text-sm text-gray-600">
+            {showSignUp ? (
+              <>
+                <p>Already have an account?</p>
+                <Button variant="link" className="text-blue-600" onClick={() => setShowSignUp(false)}>
+                  Sign In
+                </Button>
+              </>
+            ) : (
+              <>
+                <p>Need an account?</p>
+                <Button variant="link" className="text-blue-600" onClick={() => setShowSignUp(true)}>
+                  Create Account
+                </Button>
+              </>
+            )}
           </div>
 
-          <div className="mt-6 text-center text-sm text-gray-600">
-            <p>Contact your administrator for access credentials</p>
+          <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdminLogin(true)}
+              className="text-red-600 border-red-300 hover:bg-red-50"
+            >
+              <UserCheck className="h-4 w-4 mr-2" />
+              Admin Access
+            </Button>
           </div>
         </CardContent>
       </Card>

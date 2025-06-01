@@ -20,17 +20,17 @@ export function SyncStatusIndicator() {
   const getStatusIcon = () => {
     switch (status.status) {
       case "online":
-        return <Wifi className="h-4 w-4" />
+        return <Wifi className="h-3 w-3" />
       case "offline":
-        return <WifiOff className="h-4 w-4" />
+        return <WifiOff className="h-3 w-3" />
       case "syncing":
-        return <RefreshCw className="h-4 w-4 animate-spin" />
+        return <RefreshCw className="h-3 w-3 animate-spin" />
       case "synced":
-        return <CheckCircle className="h-4 w-4" />
+        return <CheckCircle className="h-3 w-3" />
       case "error":
-        return <AlertCircle className="h-4 w-4" />
+        return <AlertCircle className="h-3 w-3" />
       default:
-        return <Clock className="h-4 w-4" />
+        return <Clock className="h-3 w-3" />
     }
   }
 
@@ -55,13 +55,13 @@ export function SyncStatusIndicator() {
       case "online":
         return "Online"
       case "offline":
-        return "Offline Mode"
+        return "Offline"
       case "syncing":
-        return "Syncing..."
+        return "Syncing"
       case "synced":
         return "Synced"
       case "error":
-        return "Sync Error"
+        return "Error"
       default:
         return "Unknown"
     }
@@ -70,16 +70,16 @@ export function SyncStatusIndicator() {
   const formatLastSync = () => {
     if (!status.lastSyncTime) return "Never"
     const date = new Date(status.lastSyncTime)
-    return date.toLocaleTimeString()
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-      <Badge variant="secondary" className={`${getStatusColor()} text-white`}>
+    <div className="fixed top-2 right-2 z-40 flex items-center gap-1">
+      <Badge variant="secondary" className={`${getStatusColor()} text-white text-xs px-2 py-1`}>
         {getStatusIcon()}
-        <span className="ml-2">{getStatusText()}</span>
+        <span className="ml-1">{getStatusText()}</span>
         {status.pendingItems > 0 && (
-          <span className="ml-2 bg-white text-gray-900 px-2 py-0.5 rounded-full text-xs">{status.pendingItems}</span>
+          <span className="ml-1 bg-white text-gray-900 px-1 rounded text-xs">{status.pendingItems}</span>
         )}
       </Badge>
 
@@ -89,14 +89,16 @@ export function SyncStatusIndicator() {
           variant="outline"
           onClick={() => syncManager.forceSync()}
           disabled={status.status === "syncing"}
+          className="h-6 w-6 p-0"
         >
-          <RefreshCw className={`h-3 w-3 mr-1 ${status.status === "syncing" ? "animate-spin" : ""}`} />
-          Sync Now
+          <RefreshCw className={`h-3 w-3 ${status.status === "syncing" ? "animate-spin" : ""}`} />
         </Button>
       )}
 
       {status.lastSyncTime && (
-        <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded border">Last sync: {formatLastSync()}</div>
+        <div className="text-xs text-gray-500 bg-white px-1 py-0.5 rounded border text-center min-w-[60px]">
+          {formatLastSync()}
+        </div>
       )}
     </div>
   )

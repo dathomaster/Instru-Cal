@@ -531,7 +531,7 @@ export default function LoadCellCalibrationPage() {
 
   const handlePrint = async () => {
     try {
-      // First save the calibration
+      // First save the calibration and wait for it to complete
       const calibrationId = Date.now().toString()
       const calibration = {
         id: calibrationId,
@@ -562,7 +562,11 @@ export default function LoadCellCalibrationPage() {
         updatedAt: new Date().toISOString(),
       }
 
+      // Wait for the save to complete
       await calibrationDB.addCalibration(calibration)
+
+      // Small delay to ensure database write is complete
+      await new Promise((resolve) => setTimeout(resolve, 200))
 
       // Navigate to the certificate page with auto-print
       window.location.href = `/calibrations/${calibrationId}/report?print=true`

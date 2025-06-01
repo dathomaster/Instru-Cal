@@ -66,8 +66,19 @@ export default function CalibrationDetailPage() {
 
   const loadCalibrationData = async () => {
     try {
+      // Ensure database is properly initialized
       await calibrationDB.init()
+
+      // Add a small delay to ensure any recent writes are available
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       const allCalibrations = await calibrationDB.getAllCalibrations()
+      console.log("Looking for calibration ID:", calibrationId)
+      console.log(
+        "Available calibrations:",
+        allCalibrations.map((c) => c.id),
+      )
+
       const foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
 
       if (foundCalibration) {
@@ -78,6 +89,8 @@ export default function CalibrationDetailPage() {
         const customers = await calibrationDB.getCustomers()
         const foundCustomer = customers.find((c) => c.id === foundCalibration.customerId)
         setCustomer(foundCustomer || null)
+      } else {
+        console.error("Calibration not found with ID:", calibrationId)
       }
     } catch (error) {
       console.error("Error loading calibration:", error)

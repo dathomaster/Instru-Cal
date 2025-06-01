@@ -55,9 +55,9 @@ export function LoginForm() {
         localStorage.setItem(
           "adminUser",
           JSON.stringify({
-            id: "admin",
-            email: "admin@system",
-            isAdmin: true,
+            id: "admin-user",
+            email: "admin@calibrationpro.com",
+            user_metadata: { isAdmin: true },
           }),
         )
         // Force a page reload to trigger auth provider update
@@ -107,9 +107,19 @@ export function LoginForm() {
               <UserCheck className="h-6 w-6 text-red-600" />
             </div>
             <CardTitle className="text-2xl">Admin Access</CardTitle>
-            <p className="text-gray-600">Enter admin credentials to manage the system</p>
+            <p className="text-gray-600">Manage employees and system settings</p>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <h4 className="font-medium text-blue-900 text-sm">Admin Features:</h4>
+              <ul className="text-xs text-blue-800 mt-1 space-y-1">
+                <li>• Manage employee accounts</li>
+                <li>• View all calibration data</li>
+                <li>• System configuration</li>
+                <li>• Data export and reports</li>
+              </ul>
+            </div>
+
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div>
                 <label htmlFor="adminUsername" className="block text-sm font-medium text-gray-700 mb-1">
@@ -146,7 +156,7 @@ export function LoginForm() {
               )}
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Verifying..." : "Admin Login"}
+                {loading ? "Verifying..." : "Login as Admin"}
               </Button>
             </form>
 

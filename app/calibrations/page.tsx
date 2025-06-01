@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { calibrationDB, type Calibration, type Customer, type Equipment } from "@/lib/db"
 import Link from "next/link"
-import { Edit, FileText, Plus } from "lucide-react"
+import { Edit, FileText, Plus, ArrowLeft } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export default function CalibrationsPage() {
@@ -57,8 +57,26 @@ export default function CalibrationsPage() {
 
   return (
     <div className="container mx-auto py-10">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-semibold">Calibrations</h1>
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
+        <Link href="/" className="hover:text-gray-900">
+          Dashboard
+        </Link>
+        <span>/</span>
+        <span className="text-gray-900">Calibrations</span>
+      </div>
+
+      {/* Header with Back Button */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </Link>
+          <h1 className="text-3xl font-semibold">Calibrations</h1>
+        </div>
         <Link href="/calibrations/new">
           <Button>
             <Plus className="h-4 w-4 mr-2" />

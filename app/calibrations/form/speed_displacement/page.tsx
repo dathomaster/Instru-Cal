@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -337,8 +337,10 @@ export default function SpeedDisplacementCalibrationPage() {
 
   const [overallResult, setOverallResult] = useState<"pass" | "fail" | "pending">("pending")
 
-  // Calculate speed run data
-  const calculateSpeedRun = (run: SpeedRun[], index: number, field: string, value: string) => {
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
+
+  // Calculate speed run data with debouncing
+  const calculateSpeedRun = useCallback((run: SpeedRun[], index: number, field: string, value: string) => {
     const newRun = [...run]
     const numValue = Number.parseFloat(value) || 0
 
@@ -368,10 +370,10 @@ export default function SpeedDisplacementCalibrationPage() {
     }
 
     return newRun
-  }
+  }, [])
 
-  // Calculate displacement run data
-  const calculateDisplacementRun = (run: DisplacementRun[], index: number, value: string) => {
+  // Calculate displacement run data with debouncing
+  const calculateDisplacementRun = useCallback((run: DisplacementRun[], index: number, value: string) => {
     const newRun = [...run]
     const numValue = Number.parseFloat(value) || 0
 
@@ -390,41 +392,81 @@ export default function SpeedDisplacementCalibrationPage() {
     }
 
     return newRun
-  }
+  }, [])
 
-  // Update functions for speed runs
-  const updateSpeedUpRun1 = (index: number, field: string, value: string) => {
-    setSpeedUpRun1(calculateSpeedRun(speedUpRun1, index, field, value))
-  }
+  // Debounced update functions for speed runs
+  const updateSpeedUpRun1 = useCallback(
+    (index: number, field: string, value: string) => {
+      setTimeout(() => {
+        setSpeedUpRun1((prev) => calculateSpeedRun(prev, index, field, value))
+      }, 100)
+    },
+    [calculateSpeedRun],
+  )
 
-  const updateSpeedDownRun1 = (index: number, field: string, value: string) => {
-    setSpeedDownRun1(calculateSpeedRun(speedDownRun1, index, field, value))
-  }
+  const updateSpeedDownRun1 = useCallback(
+    (index: number, field: string, value: string) => {
+      setTimeout(() => {
+        setSpeedDownRun1((prev) => calculateSpeedRun(prev, index, field, value))
+      }, 100)
+    },
+    [calculateSpeedRun],
+  )
 
-  const updateSpeedUpRun2 = (index: number, field: string, value: string) => {
-    setSpeedUpRun2(calculateSpeedRun(speedUpRun2, index, field, value))
-  }
+  const updateSpeedUpRun2 = useCallback(
+    (index: number, field: string, value: string) => {
+      setTimeout(() => {
+        setSpeedUpRun2((prev) => calculateSpeedRun(prev, index, field, value))
+      }, 100)
+    },
+    [calculateSpeedRun],
+  )
 
-  const updateSpeedDownRun2 = (index: number, field: string, value: string) => {
-    setSpeedDownRun2(calculateSpeedRun(speedDownRun2, index, field, value))
-  }
+  const updateSpeedDownRun2 = useCallback(
+    (index: number, field: string, value: string) => {
+      setTimeout(() => {
+        setSpeedDownRun2((prev) => calculateSpeedRun(prev, index, field, value))
+      }, 100)
+    },
+    [calculateSpeedRun],
+  )
 
-  // Update functions for displacement runs
-  const updateDisplacementUpRun1 = (index: number, value: string) => {
-    setDisplacementUpRun1(calculateDisplacementRun(displacementUpRun1, index, value))
-  }
+  // Debounced update functions for displacement runs
+  const updateDisplacementUpRun1 = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setDisplacementUpRun1((prev) => calculateDisplacementRun(prev, index, value))
+      }, 100)
+    },
+    [calculateDisplacementRun],
+  )
 
-  const updateDisplacementDownRun1 = (index: number, value: string) => {
-    setDisplacementDownRun1(calculateDisplacementRun(displacementDownRun1, index, value))
-  }
+  const updateDisplacementDownRun1 = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setDisplacementDownRun1((prev) => calculateDisplacementRun(prev, index, value))
+      }, 100)
+    },
+    [calculateDisplacementRun],
+  )
 
-  const updateDisplacementUpRun2 = (index: number, value: string) => {
-    setDisplacementUpRun2(calculateDisplacementRun(displacementUpRun2, index, value))
-  }
+  const updateDisplacementUpRun2 = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setDisplacementUpRun2((prev) => calculateDisplacementRun(prev, index, value))
+      }, 100)
+    },
+    [calculateDisplacementRun],
+  )
 
-  const updateDisplacementDownRun2 = (index: number, value: string) => {
-    setDisplacementDownRun2(calculateDisplacementRun(displacementDownRun2, index, value))
-  }
+  const updateDisplacementDownRun2 = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setDisplacementDownRun2((prev) => calculateDisplacementRun(prev, index, value))
+      }, 100)
+    },
+    [calculateDisplacementRun],
+  )
 
   // Calculate overview data
   useEffect(() => {
@@ -529,84 +571,148 @@ export default function SpeedDisplacementCalibrationPage() {
     data: SpeedRun[]
     onUpdate: (index: number, field: string, value: string) => void
     direction: "up" | "down"
-  }) => (
-    <div className="mb-6">
-      <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
-        {direction === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-        {title}
-      </h4>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left p-2 font-medium">UUT Set Speed</th>
-              <th className="text-left p-2 font-medium">Distance</th>
-              <th className="text-left p-2 font-medium">Time Total</th>
-              <th className="text-left p-2 font-medium">Time Min</th>
-              <th className="text-left p-2 font-medium">Time Seconds</th>
-              <th className="text-left p-2 font-medium">Actual Speed</th>
-              <th className="text-left p-2 font-medium">Unit Error</th>
-              <th className="text-left p-2 font-medium">% Error</th>
-              <th className="text-left p-2 font-medium">Class</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((point, index) => (
-              <tr key={index} className="border-b hover:bg-gray-50">
-                <td className="p-2 font-medium">{point.setSpeed}</td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={point.distance || ""}
-                    onChange={(e) => onUpdate(index, "distance", e.target.value)}
-                    className="w-20 h-8"
-                    placeholder="0.0"
-                  />
-                </td>
-                <td className="p-2">{point.timeTotal.toFixed(3)}</td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="1"
-                    value={point.timeMin || ""}
-                    onChange={(e) => onUpdate(index, "timeMin", e.target.value)}
-                    className="w-16 h-8"
-                    placeholder="0"
-                  />
-                </td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={point.timeSeconds || ""}
-                    onChange={(e) => onUpdate(index, "timeSeconds", e.target.value)}
-                    className="w-20 h-8"
-                    placeholder="0.0"
-                  />
-                </td>
-                <td className="p-2">{point.actualSpeed.toFixed(3)}</td>
-                <td className="p-2">{point.unitError.toFixed(3)}</td>
-                <td className="p-2">
-                  <span
-                    className={`font-medium ${Math.abs(point.percentError) > calibrationData.speedTolerance ? "text-red-600" : "text-green-600"}`}
-                  >
-                    {point.percentError.toFixed(3)}%
-                  </span>
-                </td>
-                <td className="p-2">
-                  <Badge variant={point.class === "A" ? "default" : point.class === "B" ? "secondary" : "destructive"}>
-                    {point.class || "-"}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+  }) => {
+    // Completely isolated local state
+    const [localValues, setLocalValues] = useState<{ [key: string]: string }>({})
 
+    const handleFieldChange = (index: number, field: string, value: string) => {
+      const key = `${field}-${index}`
+      setLocalValues((prev) => ({ ...prev, [key]: value }))
+      onUpdate(index, field, value)
+    }
+
+    const getFieldValue = (index: number, field: string) => {
+      const key = `${field}-${index}`
+      if (localValues[key] !== undefined) return localValues[key]
+
+      switch (field) {
+        case "distance":
+          return data[index]?.distance?.toString() || ""
+        case "timeMin":
+          return data[index]?.timeMin?.toString() || ""
+        case "timeSeconds":
+          return data[index]?.timeSeconds?.toString() || ""
+        default:
+          return ""
+      }
+    }
+
+    return (
+      <div className="mb-6">
+        <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
+          {direction === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+          {title}
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left p-2 font-medium">UUT Set Speed</th>
+                <th className="text-left p-2 font-medium">Distance</th>
+                <th className="text-left p-2 font-medium">Time Total</th>
+                <th className="text-left p-2 font-medium">Time Min</th>
+                <th className="text-left p-2 font-medium">Time Seconds</th>
+                <th className="text-left p-2 font-medium">Actual Speed</th>
+                <th className="text-left p-2 font-medium">Unit Error</th>
+                <th className="text-left p-2 font-medium">% Error</th>
+                <th className="text-left p-2 font-medium">Class</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((point, index) => (
+                <tr key={index} className="border-b hover:bg-gray-50">
+                  <td className="p-2 font-medium">{point.setSpeed}</td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={getFieldValue(index, "distance")}
+                      onChange={(e) => handleFieldChange(index, "distance", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextInput = currentRow?.querySelector("td:nth-child(4) input") as HTMLInputElement
+                          if (nextInput) {
+                            nextInput.focus()
+                            nextInput.select()
+                          }
+                        }
+                      }}
+                      className="w-20 h-8"
+                      placeholder="0.0"
+                    />
+                  </td>
+                  <td className="p-2">{point.timeTotal.toFixed(3)}</td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="1"
+                      value={getFieldValue(index, "timeMin")}
+                      onChange={(e) => handleFieldChange(index, "timeMin", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextInput = currentRow?.querySelector("td:nth-child(5) input") as HTMLInputElement
+                          if (nextInput) {
+                            nextInput.focus()
+                            nextInput.select()
+                          }
+                        }
+                      }}
+                      className="w-16 h-8"
+                      placeholder="0"
+                    />
+                  </td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={getFieldValue(index, "timeSeconds")}
+                      onChange={(e) => handleFieldChange(index, "timeSeconds", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextRow = currentRow?.nextElementSibling
+                          const nextRowInput = nextRow?.querySelector("td:nth-child(2) input") as HTMLInputElement
+                          if (nextRowInput) {
+                            nextRowInput.focus()
+                            nextRowInput.select()
+                          }
+                        }
+                      }}
+                      className="w-20 h-8"
+                      placeholder="0.0"
+                    />
+                  </td>
+                  <td className="p-2">{point.actualSpeed.toFixed(3)}</td>
+                  <td className="p-2">{point.unitError.toFixed(3)}</td>
+                  <td className="p-2">
+                    <span
+                      className={`font-medium ${Math.abs(point.percentError) > calibrationData.speedTolerance ? "text-red-600" : "text-green-600"}`}
+                    >
+                      {point.percentError.toFixed(3)}%
+                    </span>
+                  </td>
+                  <td className="p-2">
+                    <Badge
+                      variant={point.class === "A" ? "default" : point.class === "B" ? "secondary" : "destructive"}
+                    >
+                      {point.class || "-"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Also update DisplacementRunTable
   const DisplacementRunTable = ({
     title,
     data,
@@ -617,57 +723,88 @@ export default function SpeedDisplacementCalibrationPage() {
     data: DisplacementRun[]
     onUpdate: (index: number, value: string) => void
     direction: "up" | "down"
-  }) => (
-    <div className="mb-6">
-      <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
-        {direction === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-        {title}
-      </h4>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left p-2 font-medium">Set Displacement (in)</th>
-              <th className="text-left p-2 font-medium">Actual Displacement (in)</th>
-              <th className="text-left p-2 font-medium">Error (in)</th>
-              <th className="text-left p-2 font-medium">% Error</th>
-              <th className="text-left p-2 font-medium">Class</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((point, index) => (
-              <tr key={index} className="border-b hover:bg-gray-50">
-                <td className="p-2 font-medium">{point.setDisplacement}</td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="0.001"
-                    value={point.actualDisplacement || ""}
-                    onChange={(e) => onUpdate(index, e.target.value)}
-                    className="w-24 h-8"
-                    placeholder="0.000"
-                  />
-                </td>
-                <td className="p-2">{point.error.toFixed(3)}</td>
-                <td className="p-2">
-                  <span
-                    className={`font-medium ${Math.abs(point.percentError) > calibrationData.displacementTolerance ? "text-red-600" : "text-green-600"}`}
-                  >
-                    {point.percentError.toFixed(3)}%
-                  </span>
-                </td>
-                <td className="p-2">
-                  <Badge variant={point.class === "A" ? "default" : point.class === "B" ? "secondary" : "destructive"}>
-                    {point.class || "-"}
-                  </Badge>
-                </td>
+  }) => {
+    // Completely isolated local state
+    const [localValues, setLocalValues] = useState<{ [key: string]: string }>({})
+
+    const handleChange = (index: number, value: string) => {
+      const key = `displacement-${index}`
+      setLocalValues((prev) => ({ ...prev, [key]: value }))
+      onUpdate(index, value)
+    }
+
+    const getValue = (index: number) => {
+      const key = `displacement-${index}`
+      if (localValues[key] !== undefined) return localValues[key]
+      return data[index]?.actualDisplacement?.toString() || ""
+    }
+
+    return (
+      <div className="mb-6">
+        <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
+          {direction === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+          {title}
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left p-2 font-medium">Set Displacement (in)</th>
+                <th className="text-left p-2 font-medium">Actual Displacement (in)</th>
+                <th className="text-left p-2 font-medium">Error (in)</th>
+                <th className="text-left p-2 font-medium">% Error</th>
+                <th className="text-left p-2 font-medium">Class</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((point, index) => (
+                <tr key={index} className="border-b hover:bg-gray-50">
+                  <td className="p-2 font-medium">{point.setDisplacement}</td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={getValue(index)}
+                      onChange={(e) => handleChange(index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextRow = currentRow?.nextElementSibling
+                          const nextRowInput = nextRow?.querySelector("td:nth-child(2) input") as HTMLInputElement
+                          if (nextRowInput) {
+                            nextRowInput.focus()
+                            nextRowInput.select()
+                          }
+                        }
+                      }}
+                      className="w-24 h-8"
+                      placeholder="0.000"
+                    />
+                  </td>
+                  <td className="p-2">{point.error.toFixed(3)}</td>
+                  <td className="p-2">
+                    <span
+                      className={`font-medium ${Math.abs(point.percentError) > calibrationData.displacementTolerance ? "text-red-600" : "text-green-600"}`}
+                    >
+                      {point.percentError.toFixed(3)}%
+                    </span>
+                  </td>
+                  <td className="p-2">
+                    <Badge
+                      variant={point.class === "A" ? "default" : point.class === "B" ? "secondary" : "destructive"}
+                    >
+                      {point.class || "-"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -762,48 +899,68 @@ export default function SpeedDisplacementCalibrationPage() {
               <CardTitle>Calibration Data</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="speed-run1" className="w-full">
+              <Tabs defaultValue="speed-up" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="speed-run1">Speed Run 1</TabsTrigger>
-                  <TabsTrigger value="speed-run2">Speed Run 2</TabsTrigger>
-                  <TabsTrigger value="displacement-run1">Displacement Run 1</TabsTrigger>
-                  <TabsTrigger value="displacement-run2">Displacement Run 2</TabsTrigger>
+                  <TabsTrigger value="speed-up">Speed UP</TabsTrigger>
+                  <TabsTrigger value="speed-down">Speed DOWN</TabsTrigger>
+                  <TabsTrigger value="displacement-up">Displacement UP</TabsTrigger>
+                  <TabsTrigger value="displacement-down">Displacement DOWN</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="speed-run1" className="mt-6">
-                  <SpeedRunTable title="UP" data={speedUpRun1} onUpdate={updateSpeedUpRun1} direction="up" />
-                  <SpeedRunTable title="DOWN" data={speedDownRun1} onUpdate={updateSpeedDownRun1} direction="down" />
+                <TabsContent value="speed-up" className="mt-6">
+                  <SpeedRunTable
+                    title="Speed UP - Run 1"
+                    data={speedUpRun1}
+                    onUpdate={updateSpeedUpRun1}
+                    direction="up"
+                  />
+                  <SpeedRunTable
+                    title="Speed UP - Run 2"
+                    data={speedUpRun2}
+                    onUpdate={updateSpeedUpRun2}
+                    direction="up"
+                  />
                 </TabsContent>
 
-                <TabsContent value="speed-run2" className="mt-6">
-                  <SpeedRunTable title="UP" data={speedUpRun2} onUpdate={updateSpeedUpRun2} direction="up" />
-                  <SpeedRunTable title="DOWN" data={speedDownRun2} onUpdate={updateSpeedDownRun2} direction="down" />
+                <TabsContent value="speed-down" className="mt-6">
+                  <SpeedRunTable
+                    title="Speed DOWN - Run 1"
+                    data={speedDownRun1}
+                    onUpdate={updateSpeedDownRun1}
+                    direction="down"
+                  />
+                  <SpeedRunTable
+                    title="Speed DOWN - Run 2"
+                    data={speedDownRun2}
+                    onUpdate={updateSpeedDownRun2}
+                    direction="down"
+                  />
                 </TabsContent>
 
-                <TabsContent value="displacement-run1" className="mt-6">
+                <TabsContent value="displacement-up" className="mt-6">
                   <DisplacementRunTable
-                    title="UP"
+                    title="Displacement UP - Run 1"
                     data={displacementUpRun1}
                     onUpdate={updateDisplacementUpRun1}
                     direction="up"
                   />
                   <DisplacementRunTable
-                    title="DOWN"
-                    data={displacementDownRun1}
-                    onUpdate={updateDisplacementDownRun1}
-                    direction="down"
-                  />
-                </TabsContent>
-
-                <TabsContent value="displacement-run2" className="mt-6">
-                  <DisplacementRunTable
-                    title="UP"
+                    title="Displacement UP - Run 2"
                     data={displacementUpRun2}
                     onUpdate={updateDisplacementUpRun2}
                     direction="up"
                   />
+                </TabsContent>
+
+                <TabsContent value="displacement-down" className="mt-6">
                   <DisplacementRunTable
-                    title="DOWN"
+                    title="Displacement DOWN - Run 1"
+                    data={displacementDownRun1}
+                    onUpdate={updateDisplacementDownRun1}
+                    direction="down"
+                  />
+                  <DisplacementRunTable
+                    title="Displacement DOWN - Run 2"
                     data={displacementDownRun2}
                     onUpdate={updateDisplacementDownRun2}
                     direction="down"

@@ -1,5 +1,8 @@
+// lib/db.ts
+
 // IndexedDB utilities for offline storage
 import { syncManager } from "./sync" // Import syncManager
+
 // Generate UUID function for browser compatibility
 function generateUUID() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {

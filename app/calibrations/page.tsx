@@ -153,7 +153,10 @@ export default function CalibrationsPage() {
 
                     <div className="flex gap-2 ml-4">
                       <Link href={`/calibrations/${calibration.id}/report`}>
-                        <Button variant="outline">View Report</Button>
+                        <Button variant="outline">
+                          <FileText className="h-4 w-4 mr-2" />
+                          View Certificate
+                        </Button>
                       </Link>
                       <Link
                         href={`/calibrations/form/${calibration.type}?customer=${calibration.customerId}&equipment=${calibration.equipmentId}`}

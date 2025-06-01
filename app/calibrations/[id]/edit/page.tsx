@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -518,17 +516,18 @@ function LoadCellEditForm({
   onUpdateReading: (index: number, value: string) => void
   result: "pass" | "fail" | "pending"
 }) {
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
+  // Local state to prevent interference with typing
+  const [localValues, setLocalValues] = useState<{ [key: string]: string }>({})
 
-  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      const nextIndex = index + 1
-      if (nextIndex < points.length && inputRefs.current[nextIndex]) {
-        inputRefs.current[nextIndex]?.focus()
-        inputRefs.current[nextIndex]?.select()
-      }
-    }
+  const handleChange = (index: number, value: string) => {
+    const key = `reading-${index}`
+    setLocalValues((prev) => ({ ...prev, [key]: value }))
+    onUpdateReading(index, value)
+  }
+
+  const getValue = (index: number) => {
+    const key = `reading-${index}`
+    return localValues[key] !== undefined ? localValues[key] : points[index].reading || ""
   }
 
   return (
@@ -549,12 +548,22 @@ function LoadCellEditForm({
                 <td className="p-3 font-medium bg-blue-50">{point.applied}</td>
                 <td className="p-3">
                   <Input
-                    ref={(el) => (inputRefs.current[index] = el)}
                     type="number"
                     step="0.1"
-                    value={point.reading || ""}
-                    onChange={(e) => onUpdateReading(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, index)}
+                    value={getValue(index)}
+                    onChange={(e) => handleChange(index, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        const currentRow = e.currentTarget.closest("tr")
+                        const nextRow = currentRow?.nextElementSibling
+                        const nextInput = nextRow?.querySelector("input") as HTMLInputElement
+                        if (nextInput) {
+                          nextInput.focus()
+                          nextInput.select()
+                        }
+                      }
+                    }}
                     className="w-24"
                     placeholder="0.0"
                   />
@@ -587,6 +596,7 @@ function LoadCellEditForm({
   )
 }
 
+// Also update SpeedDisplacementEditForm components similarly
 function SpeedDisplacementEditForm({
   speedPoints,
   displacementPoints,
@@ -606,29 +616,32 @@ function SpeedDisplacementEditForm({
   speedResult: "pass" | "fail" | "pending"
   displacementResult: "pass" | "fail" | "pending"
 }) {
-  const speedInputRefs = useRef<(HTMLInputElement | null)[]>([])
-  const displacementInputRefs = useRef<(HTMLInputElement | null)[]>([])
+  // Local state to prevent interference with typing
+  const [speedLocalValues, setSpeedLocalValues] = useState<{ [key: string]: string }>({})
+  const [displacementLocalValues, setDisplacementLocalValues] = useState<{ [key: string]: string }>({})
 
-  const handleSpeedKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      const nextIndex = index + 1
-      if (nextIndex < speedPoints.length && speedInputRefs.current[nextIndex]) {
-        speedInputRefs.current[nextIndex]?.focus()
-        speedInputRefs.current[nextIndex]?.select()
-      }
-    }
+  const handleSpeedChange = (index: number, value: string) => {
+    const key = `speed-${index}`
+    setSpeedLocalValues((prev) => ({ ...prev, [key]: value }))
+    onUpdateSpeedReading(index, value)
   }
 
-  const handleDisplacementKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      const nextIndex = index + 1
-      if (nextIndex < displacementPoints.length && displacementInputRefs.current[nextIndex]) {
-        displacementInputRefs.current[nextIndex]?.focus()
-        displacementInputRefs.current[nextIndex]?.select()
-      }
-    }
+  const handleDisplacementChange = (index: number, value: string) => {
+    const key = `displacement-${index}`
+    setDisplacementLocalValues((prev) => ({ ...prev, [key]: value }))
+    onUpdateDisplacementReading(index, value)
+  }
+
+  const getSpeedValue = (index: number) => {
+    const key = `speed-${index}`
+    return speedLocalValues[key] !== undefined ? speedLocalValues[key] : speedPoints[index].actualSpeed || ""
+  }
+
+  const getDisplacementValue = (index: number) => {
+    const key = `displacement-${index}`
+    return displacementLocalValues[key] !== undefined
+      ? displacementLocalValues[key]
+      : displacementPoints[index].actualDisplacement || ""
   }
 
   return (
@@ -655,12 +668,22 @@ function SpeedDisplacementEditForm({
                   <td className="p-3 font-medium">{point.setSpeed}</td>
                   <td className="p-3">
                     <Input
-                      ref={(el) => (speedInputRefs.current[index] = el)}
                       type="number"
                       step="0.01"
-                      value={point.actualSpeed || ""}
-                      onChange={(e) => onUpdateSpeedReading(index, e.target.value)}
-                      onKeyDown={(e) => handleSpeedKeyDown(e, index)}
+                      value={getSpeedValue(index)}
+                      onChange={(e) => handleSpeedChange(index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextRow = currentRow?.nextElementSibling
+                          const nextInput = nextRow?.querySelector("input") as HTMLInputElement
+                          if (nextInput) {
+                            nextInput.focus()
+                            nextInput.select()
+                          }
+                        }
+                      }}
                       className="w-32"
                       placeholder="0.00"
                     />
@@ -710,12 +733,22 @@ function SpeedDisplacementEditForm({
                   <td className="p-3 font-medium">{point.setDisplacement}</td>
                   <td className="p-3">
                     <Input
-                      ref={(el) => (displacementInputRefs.current[index] = el)}
                       type="number"
                       step="0.001"
-                      value={point.actualDisplacement || ""}
-                      onChange={(e) => onUpdateDisplacementReading(index, e.target.value)}
-                      onKeyDown={(e) => handleDisplacementKeyDown(e, index)}
+                      value={getDisplacementValue(index)}
+                      onChange={(e) => handleDisplacementChange(index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextRow = currentRow?.nextElementSibling
+                          const nextInput = nextRow?.querySelector("input") as HTMLInputElement
+                          if (nextInput) {
+                            nextInput.focus()
+                            nextInput.select()
+                          }
+                        }
+                      }}
                       className="w-32"
                       placeholder="0.000"
                     />

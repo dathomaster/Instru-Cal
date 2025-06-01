@@ -113,13 +113,22 @@ class SyncManager {
   async syncData() {
     if (!this.isOnline || this.syncInProgress) return
 
+    const supabase = createClientSupabaseClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session) {
+      console.log("No session found, skipping sync")
+      return
+    }
+
     this.syncInProgress = true
     this.notifyListeners({ status: "syncing", pendingItems: this.syncQueue.length })
 
     try {
       // Get all unsynced calibrations
       const unsyncedCalibrations = await calibrationDB.getUnsyncedCalibrations()
-      const supabase = createClientSupabaseClient()
 
       // Process sync queue first
       const queueCopy = [...this.syncQueue]
@@ -184,6 +193,15 @@ class SyncManager {
   private async syncCalibrationItem(id: string, operation: string) {
     const supabase = createClientSupabaseClient()
 
+    // Check if we have a valid session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      console.log("No session found, skipping sync")
+      return
+    }
+
     if (operation === "delete") {
       await supabase.from("calibrations").delete().eq("id", id)
       return
@@ -214,6 +232,15 @@ class SyncManager {
   private async syncCustomerItem(id: string, operation: string) {
     const supabase = createClientSupabaseClient()
 
+    // Check if we have a valid session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      console.log("No session found, skipping sync")
+      return
+    }
+
     if (operation === "delete") {
       await supabase.from("customers").delete().eq("id", id)
       return
@@ -240,6 +267,15 @@ class SyncManager {
   private async syncEquipmentItem(id: string, operation: string) {
     const supabase = createClientSupabaseClient()
 
+    // Check if we have a valid session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      console.log("No session found, skipping sync")
+      return
+    }
+
     if (operation === "delete") {
       await supabase.from("equipment").delete().eq("id", id)
       return
@@ -264,6 +300,15 @@ class SyncManager {
 
   private async syncToolItem(id: string, operation: string) {
     const supabase = createClientSupabaseClient()
+
+    // Check if we have a valid session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      console.log("No session found, skipping sync")
+      return
+    }
 
     if (operation === "delete") {
       await supabase.from("tools").delete().eq("id", id)

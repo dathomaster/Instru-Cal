@@ -282,6 +282,12 @@ export default function CustomerDetailPage() {
                   Add Equipment
                 </Button>
               </Link>
+              <Link href={`/customers/${customer.id}/reports`}>
+                <Button variant="outline" className="w-full">
+                  <FileText className="h-4 w-4 mr-2" />
+                  View Reports
+                </Button>
+              </Link>
               <Link href="/equipment">
                 <Button variant="outline" className="w-full">
                   View All Equipment

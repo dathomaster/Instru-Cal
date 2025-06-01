@@ -7,6 +7,36 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Printer, Edit } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
 
+// Add print styles
+const printStyles = `
+  @media print {
+    @page {
+      margin: 0.5in;
+      size: letter;
+    }
+    
+    body {
+      -webkit-print-color-adjust: exact;
+      color-adjust: exact;
+    }
+    
+    .print\\:break-inside-avoid {
+      break-inside: avoid;
+    }
+    
+    .print\\:break-after-page {
+      break-after: page;
+    }
+  }
+`
+
+// Add the styles to the document head
+if (typeof document !== "undefined") {
+  const styleSheet = document.createElement("style")
+  styleSheet.textContent = printStyles
+  document.head.appendChild(styleSheet)
+}
+
 export default function CalibrationDetailPage() {
   const params = useParams()
   const calibrationId = params.id as string
@@ -43,7 +73,10 @@ export default function CalibrationDetailPage() {
   }
 
   const handlePrint = () => {
-    window.print()
+    // Ensure all images and content are loaded before printing
+    setTimeout(() => {
+      window.print()
+    }, 100)
   }
 
   if (loading) {

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -290,8 +290,8 @@ export default function LoadCellCalibrationPage() {
     {
       appliedLoad: 300,
       appliedOverride: 300,
-      unitUnderTest: 0,
       unitError: 0,
+      unitUnderTest: 0,
       runError: 0,
     },
     {
@@ -381,64 +381,102 @@ export default function LoadCellCalibrationPage() {
     }
   }
 
-  // Calculate load cell run data
-  const calculateLoadCellRun = (
-    run: LoadCellPoint[],
-    index: number,
-    value: string,
-    field: "appliedOverride" | "unitUnderTest",
-  ) => {
-    const newRun = [...run]
-    const numValue = Number.parseFloat(value) || 0
+  // Calculate load cell run data with debouncing
+  const calculateLoadCellRun = useCallback(
+    (run: LoadCellPoint[], index: number, value: string, field: "appliedOverride" | "unitUnderTest") => {
+      const newRun = [...run]
+      const numValue = Number.parseFloat(value) || 0
 
-    if (field === "appliedOverride") {
-      newRun[index].appliedOverride = numValue
-    } else {
-      newRun[index].unitUnderTest = numValue
-    }
+      if (field === "appliedOverride") {
+        newRun[index].appliedOverride = numValue
+      } else {
+        newRun[index].unitUnderTest = numValue
+      }
 
-    newRun[index].unitError = newRun[index].unitUnderTest - newRun[index].appliedOverride
+      newRun[index].unitError = newRun[index].unitUnderTest - newRun[index].appliedOverride
 
-    if (newRun[index].appliedOverride > 0) {
-      newRun[index].runError = (newRun[index].unitError / newRun[index].appliedOverride) * 100
-    }
+      if (newRun[index].appliedOverride > 0) {
+        newRun[index].runError = (newRun[index].unitError / newRun[index].appliedOverride) * 100
+      }
 
-    return newRun
-  }
+      return newRun
+    },
+    [],
+  )
 
-  // Update functions for Applied Override
-  const updateTensionRun1Override = (index: number, value: string) => {
-    setTensionRun1(calculateLoadCellRun(tensionRun1, index, value, "appliedOverride"))
-  }
+  // Debounced update functions
+  const updateTensionRun1Override = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setTensionRun1((prev) => calculateLoadCellRun(prev, index, value, "appliedOverride"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateTensionRun2Override = (index: number, value: string) => {
-    setTensionRun2(calculateLoadCellRun(tensionRun2, index, value, "appliedOverride"))
-  }
+  const updateTensionRun2Override = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setTensionRun2((prev) => calculateLoadCellRun(prev, index, value, "appliedOverride"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateCompressionRun1Override = (index: number, value: string) => {
-    setCompressionRun1(calculateLoadCellRun(compressionRun1, index, value, "appliedOverride"))
-  }
+  const updateCompressionRun1Override = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setCompressionRun1((prev) => calculateLoadCellRun(prev, index, value, "appliedOverride"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateCompressionRun2Override = (index: number, value: string) => {
-    setCompressionRun2(calculateLoadCellRun(compressionRun2, index, value, "appliedOverride"))
-  }
+  const updateCompressionRun2Override = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setCompressionRun2((prev) => calculateLoadCellRun(prev, index, value, "appliedOverride"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
   // Update functions for Unit Under Test
-  const updateTensionRun1Test = (index: number, value: string) => {
-    setTensionRun1(calculateLoadCellRun(tensionRun1, index, value, "unitUnderTest"))
-  }
+  const updateTensionRun1Test = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setTensionRun1((prev) => calculateLoadCellRun(prev, index, value, "unitUnderTest"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateTensionRun2Test = (index: number, value: string) => {
-    setTensionRun2(calculateLoadCellRun(tensionRun2, index, value, "unitUnderTest"))
-  }
+  const updateTensionRun2Test = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setTensionRun2((prev) => calculateLoadCellRun(prev, index, value, "unitUnderTest"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateCompressionRun1Test = (index: number, value: string) => {
-    setCompressionRun1(calculateLoadCellRun(compressionRun1, index, value, "unitUnderTest"))
-  }
+  const updateCompressionRun1Test = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setCompressionRun1((prev) => calculateLoadCellRun(prev, index, value, "unitUnderTest"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
-  const updateCompressionRun2Test = (index: number, value: string) => {
-    setCompressionRun2(calculateLoadCellRun(compressionRun2, index, value, "unitUnderTest"))
-  }
+  const updateCompressionRun2Test = useCallback(
+    (index: number, value: string) => {
+      setTimeout(() => {
+        setCompressionRun2((prev) => calculateLoadCellRun(prev, index, value, "unitUnderTest"))
+      }, 100)
+    },
+    [calculateLoadCellRun],
+  )
 
   // Calculate overview data
   useEffect(() => {
@@ -554,64 +592,123 @@ export default function LoadCellCalibrationPage() {
     onUpdateOverride: (index: number, value: string) => void
     onUpdateTest: (index: number, value: string) => void
     type: "tension" | "compression"
-  }) => (
-    <div className="mb-6">
-      <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
-        {type === "tension" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-        {title}
-      </h4>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left p-2 font-medium">#</th>
-              <th className="text-left p-2 font-medium">Applied {type === "tension" ? "Tension" : "Comp"}</th>
-              <th className="text-left p-2 font-medium">Applied Override</th>
-              <th className="text-left p-2 font-medium">Unit Under Test</th>
-              <th className="text-left p-2 font-medium">Unit Error</th>
-              <th className="text-left p-2 font-medium">% Run Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((point, index) => (
-              <tr key={index} className="border-b hover:bg-gray-50">
-                <td className="p-2 font-medium">{index + 1}</td>
-                <td className="p-2 font-medium bg-blue-50">{point.appliedLoad}</td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={point.appliedOverride || ""}
-                    onChange={(e) => onUpdateOverride(index, e.target.value)}
-                    className="w-24 h-8 bg-red-100"
-                    placeholder="0.00"
-                  />
-                </td>
-                <td className="p-2">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={point.unitUnderTest || ""}
-                    onChange={(e) => onUpdateTest(index, e.target.value)}
-                    className={`w-24 h-8 ${getErrorColor(point.runError)}`}
-                    placeholder="0.00"
-                  />
-                </td>
-                <td className="p-2">{point.unitError.toFixed(4)}</td>
-                <td className="p-2">
-                  <span
-                    className={`font-medium ${Math.abs(point.runError) > calibrationData.tolerance ? "text-red-600" : "text-green-600"}`}
-                  >
-                    {point.runError.toFixed(2)}%
-                  </span>
-                </td>
+  }) => {
+    // Completely isolated local state
+    const [localValues, setLocalValues] = useState<{ [key: string]: string }>({})
+
+    const handleOverrideChange = (index: number, value: string) => {
+      const key = `override-${index}`
+      setLocalValues((prev) => ({ ...prev, [key]: value }))
+      onUpdateOverride(index, value)
+    }
+
+    const handleTestChange = (index: number, value: string) => {
+      const key = `test-${index}`
+      setLocalValues((prev) => ({ ...prev, [key]: value }))
+      onUpdateTest(index, value)
+    }
+
+    const getOverrideValue = (index: number) => {
+      const key = `override-${index}`
+      if (localValues[key] !== undefined) return localValues[key]
+      return data[index]?.appliedOverride?.toString() || ""
+    }
+
+    const getTestValue = (index: number) => {
+      const key = `test-${index}`
+      if (localValues[key] !== undefined) return localValues[key]
+      return data[index]?.unitUnderTest?.toString() || ""
+    }
+
+    return (
+      <div className="mb-6">
+        <h4 className="text-lg font-medium mb-3 flex items-center gap-2">
+          {type === "tension" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+          {title}
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left p-2 font-medium">#</th>
+                <th className="text-left p-2 font-medium">Applied {type === "tension" ? "Tension" : "Comp"}</th>
+                <th className="text-left p-2 font-medium">Applied Override</th>
+                <th className="text-left p-2 font-medium">Unit Under Test</th>
+                <th className="text-left p-2 font-medium">Unit Error</th>
+                <th className="text-left p-2 font-medium">% Run Error</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((point, index) => (
+                <tr key={index} className="border-b hover:bg-gray-50">
+                  <td className="p-2 font-medium">{index + 1}</td>
+                  <td className="p-2 font-medium bg-blue-50">{point.appliedLoad}</td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={getOverrideValue(index)}
+                      onChange={(e) => handleOverrideChange(index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextInput = currentRow?.querySelector("td:nth-child(4) input") as HTMLInputElement
+                          if (nextInput) {
+                            nextInput.focus()
+                            nextInput.select()
+                          } else {
+                            const nextRow = currentRow?.nextElementSibling
+                            const nextRowInput = nextRow?.querySelector("td:nth-child(3) input") as HTMLInputElement
+                            if (nextRowInput) {
+                              nextRowInput.focus()
+                              nextRowInput.select()
+                            }
+                          }
+                        }
+                      }}
+                      className="w-24 h-8 bg-red-100"
+                      placeholder="0.00"
+                    />
+                  </td>
+                  <td className="p-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={getTestValue(index)}
+                      onChange={(e) => handleTestChange(index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const currentRow = e.currentTarget.closest("tr")
+                          const nextRow = currentRow?.nextElementSibling
+                          const nextRowInput = nextRow?.querySelector("td:nth-child(3) input") as HTMLInputElement
+                          if (nextRowInput) {
+                            nextRowInput.focus()
+                            nextRowInput.select()
+                          }
+                        }
+                      }}
+                      className={`w-24 h-8 ${getErrorColor(point.runError)}`}
+                      placeholder="0.00"
+                    />
+                  </td>
+                  <td className="p-2">{point.unitError.toFixed(4)}</td>
+                  <td className="p-2">
+                    <span
+                      className={`font-medium ${Math.abs(point.runError) > calibrationData.tolerance ? "text-red-600" : "text-green-600"}`}
+                    >
+                      {point.runError.toFixed(2)}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

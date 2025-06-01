@@ -82,6 +82,8 @@ export default function AdminPage() {
             username: newUsername,
             password: newPassword, // In a real app, you'd hash this
             is_active: true,
+            email: null, // Explicitly set email to null since we're using username/password
+            user_id: null, // Explicitly set user_id to null since we're not using Supabase auth
           },
         ])
         .select()

@@ -56,7 +56,7 @@ export default function SignupPage() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: `${window.location.origin}/`,
         },
       })
 
@@ -90,7 +90,7 @@ export default function SignupPage() {
               Your account has been created successfully. You can now log in to access the calibration app.
             </p>
             <Button asChild className="w-full">
-              <Link href="/login">Go to Login</Link>
+              <Link href="/">Go to App</Link>
             </Button>
           </CardContent>
         </Card>
@@ -162,7 +162,7 @@ export default function SignupPage() {
         </CardContent>
         <CardFooter className="flex justify-center border-t pt-6">
           <Button variant="link" asChild>
-            <Link href="/login" className="flex items-center gap-1">
+            <Link href="/" className="flex items-center gap-1">
               <ArrowLeft className="h-4 w-4" />
               Back to Login
             </Link>

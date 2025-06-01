@@ -47,6 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           setUser(session.user)
           setIsAdmin(false)
+
+          // Update employee last sign in
+          await supabase
+            .from("employees")
+            .update({ last_sign_in_at: new Date().toISOString() })
+            .eq("user_id", session.user.id)
         }
       } catch (error) {
         console.error("Auth initialization error:", error)
@@ -66,6 +72,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         setUser(session.user)
         setIsAdmin(false)
+
+        // Update employee last sign in
+        try {
+          await supabase
+            .from("employees")
+            .update({ last_sign_in_at: new Date().toISOString() })
+            .eq("user_id", session.user.id)
+        } catch (error) {
+          console.error("Error updating last sign in:", error)
+        }
       } else {
         setUser(null)
         setIsAdmin(false)
@@ -74,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => subscription.unsubscribe()
-  }, [supabase.auth])
+  }, [supabase.auth, supabase])
 
   const signOut = async () => {
     try {

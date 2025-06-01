@@ -33,6 +33,30 @@ export function LoginForm() {
     setLoading(false)
   }
 
+  const handleCreateAdmin = async () => {
+    const adminEmail = prompt("Enter admin email:")
+    const adminPassword = prompt("Enter admin password (min 6 characters):")
+
+    if (adminEmail && adminPassword && adminPassword.length >= 6) {
+      try {
+        const { error } = await supabase.auth.signUp({
+          email: adminEmail,
+          password: adminPassword,
+        })
+
+        if (error) {
+          alert("Error: " + error.message)
+        } else {
+          alert("Admin account created! You can now login with those credentials.")
+        }
+      } catch (err) {
+        alert("Error creating account")
+      }
+    } else {
+      alert("Please enter valid email and password (min 6 characters)")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -91,6 +115,15 @@ export function LoginForm() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+
+          {/* Temporary Admin Signup - Remove after first admin is created */}
+          <div className="mt-8 pt-8 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">First Time Setup</h3>
+            <p className="text-sm text-gray-600 mb-4">If this is your first time, create an admin account:</p>
+            <Button onClick={handleCreateAdmin} variant="outline" className="w-full">
+              Create First Admin Account
+            </Button>
+          </div>
 
           <div className="mt-6 text-center text-sm text-gray-600">
             <p>Contact your administrator for access credentials</p>

@@ -1,7 +1,19 @@
-// lib/db.ts - Enhanced offline support
+// lib/db.ts - Enhanced offline-first database
 
 // IndexedDB utilities for offline storage
-import { syncManager } from "./sync" // Import syncManager
+let syncManager: any = null
+
+// Lazy load sync manager to avoid circular dependencies
+const getSyncManager = () => {
+  if (!syncManager && typeof window !== "undefined") {
+    try {
+      syncManager = require("./sync").syncManager
+    } catch (e) {
+      console.warn("Sync manager not available, running in offline-only mode")
+    }
+  }
+  return syncManager
+}
 
 // Generate UUID function for browser compatibility
 function generateUUID() {
@@ -80,32 +92,38 @@ export interface Calibration {
 
 class CalibrationDB {
   private dbName = "CalibrationApp"
-  private version = 2 // Incremented for new tools store
+  private version = 2
   private db: IDBDatabase | null = null
   private initPromise: Promise<void> | null = null
+  private isInitialized = false
 
   async init(): Promise<void> {
+    // Return immediately if already initialized
+    if (this.isInitialized && this.db) {
+      return Promise.resolve()
+    }
+
     // Return existing promise if already initializing
     if (this.initPromise) {
       return this.initPromise
     }
 
-    // Return immediately if already initialized
-    if (this.db) {
-      return Promise.resolve()
-    }
-
     this.initPromise = new Promise((resolve, reject) => {
       try {
+        if (!window.indexedDB) {
+          throw new Error("IndexedDB not supported")
+        }
+
         const request = indexedDB.open(this.dbName, this.version)
 
         request.onerror = () => {
           console.error("IndexedDB error:", request.error)
-          reject(request.error)
+          reject(new Error(`IndexedDB failed to open: ${request.error?.message}`))
         }
 
         request.onsuccess = () => {
           this.db = request.result
+          this.isInitialized = true
           console.log("✅ IndexedDB initialized successfully")
           resolve()
         }
@@ -157,6 +175,19 @@ class CalibrationDB {
     return this.initPromise
   }
 
+  private addToSyncQueue(type: string, id: string, operation: string) {
+    try {
+      const manager = getSyncManager()
+      if (manager) {
+        manager.addToSyncQueue(type, id, operation)
+      } else {
+        console.log(`📝 Queued for sync when online: ${operation} ${type} ${id}`)
+      }
+    } catch (error) {
+      console.warn("Could not add to sync queue:", error)
+    }
+  }
+
   // Tool management methods
   async addTool(tool: Omit<CalibrationTool, "id" | "createdAt" | "updatedAt">): Promise<CalibrationTool> {
     await this.init()
@@ -172,27 +203,32 @@ class CalibrationDB {
     try {
       await this.saveToStore("tools", newTool)
       console.log("✅ Tool saved to IndexedDB:", newTool.id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("tool", newTool.id, "create")
-      }
-
+      this.addToSyncQueue("tool", newTool.id, "create")
       return newTool
     } catch (error) {
       console.error("❌ Failed to save tool:", error)
-      throw error
+      throw new Error(`Failed to save tool: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async getTools(): Promise<CalibrationTool[]> {
     await this.init()
-    return this.getAllFromStore("tools")
+    try {
+      return await this.getAllFromStore("tools")
+    } catch (error) {
+      console.error("❌ Failed to get tools:", error)
+      return []
+    }
   }
 
   async getToolsByType(type: string): Promise<CalibrationTool[]> {
     await this.init()
-    return this.getFromStoreByIndex("tools", "type", type)
+    try {
+      return await this.getFromStoreByIndex("tools", "type", type)
+    } catch (error) {
+      console.error("❌ Failed to get tools by type:", error)
+      return []
+    }
   }
 
   async updateTool(id: string, updates: Partial<CalibrationTool>): Promise<CalibrationTool> {
@@ -208,79 +244,23 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("tools", updated)
-
-    // Add to sync queue only if we have syncManager
-    if (typeof syncManager !== "undefined") {
-      syncManager.addToSyncQueue("tool", id, "update")
+    try {
+      await this.saveToStore("tools", updated)
+      this.addToSyncQueue("tool", id, "update")
+      return updated
+    } catch (error) {
+      console.error("❌ Failed to update tool:", error)
+      throw new Error(`Failed to update tool: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
-
-    return updated
   }
 
   async getToolById(id: string): Promise<CalibrationTool | null> {
     await this.init()
-    return this.getFromStore("tools", id)
-  }
-
-  // Get upcoming calibrations (equipment and tools)
-  async getUpcomingCalibrations(): Promise<{
-    equipment: Array<{ equipment: Equipment; customer: Customer; daysUntilDue: number }>
-    tools: Array<{ tool: CalibrationTool; daysUntilDue: number }>
-  }> {
-    await this.init()
-
-    const allEquipment = await this.getAllEquipment()
-    const allCalibrations = await this.getAllCalibrations()
-    const allTools = await this.getTools()
-    const allCustomers = await this.getCustomers()
-
-    const now = new Date()
-    const upcomingEquipment: Array<{ equipment: Equipment; customer: Customer; daysUntilDue: number }> = []
-    const upcomingTools: Array<{ tool: CalibrationTool; daysUntilDue: number }> = []
-
-    // Find equipment that needs calibration
-    for (const equipment of allEquipment) {
-      const equipmentCalibrations = allCalibrations.filter((cal) => cal.equipmentId === equipment.id)
-      const customer = allCustomers.find((c) => c.id === equipment.customerId)
-
-      if (!customer) continue
-
-      if (equipmentCalibrations.length === 0) {
-        upcomingEquipment.push({ equipment, customer, daysUntilDue: -999 }) // Never calibrated
-        continue
-      }
-
-      const lastCalibration = equipmentCalibrations.sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-      )[0]
-
-      const lastDate = new Date(lastCalibration.date)
-      const nextDate = new Date(lastDate)
-      nextDate.setFullYear(nextDate.getFullYear() + 1)
-
-      const daysUntilDue = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-      if (daysUntilDue <= 90) {
-        upcomingEquipment.push({ equipment, customer, daysUntilDue })
-      }
-    }
-
-    // Find tools that need calibration
-    for (const tool of allTools) {
-      if (!tool.nextCalibrationDate) continue
-
-      const nextDate = new Date(tool.nextCalibrationDate)
-      const daysUntilDue = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-      if (daysUntilDue <= 90) {
-        upcomingTools.push({ tool, daysUntilDue })
-      }
-    }
-
-    return {
-      equipment: upcomingEquipment.sort((a, b) => a.daysUntilDue - b.daysUntilDue),
-      tools: upcomingTools.sort((a, b) => a.daysUntilDue - b.daysUntilDue),
+    try {
+      return await this.getFromStore("tools", id)
+    } catch (error) {
+      console.error("❌ Failed to get tool by ID:", error)
+      return null
     }
   }
 
@@ -299,16 +279,11 @@ class CalibrationDB {
     try {
       await this.saveToStore("customers", newCustomer)
       console.log("✅ Customer saved to IndexedDB:", newCustomer.id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("customer", newCustomer.id, "create")
-      }
-
+      this.addToSyncQueue("customer", newCustomer.id, "create")
       return newCustomer
     } catch (error) {
       console.error("❌ Failed to save customer:", error)
-      throw error
+      throw new Error(`Failed to save customer: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -321,32 +296,44 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("customers", updated)
-
-    // Add to sync queue only if we have syncManager
-    if (typeof syncManager !== "undefined") {
-      syncManager.addToSyncQueue("customer", customer.id, "update")
+    try {
+      await this.saveToStore("customers", updated)
+      this.addToSyncQueue("customer", customer.id, "update")
+    } catch (error) {
+      console.error("❌ Failed to update customer:", error)
+      throw new Error(`Failed to update customer: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async deleteCustomer(id: string): Promise<void> {
     await this.init()
-    await this.deleteFromStore("customers", id)
-
-    // Add to sync queue only if we have syncManager
-    if (typeof syncManager !== "undefined") {
-      syncManager.addToSyncQueue("customer", id, "delete")
+    try {
+      await this.deleteFromStore("customers", id)
+      this.addToSyncQueue("customer", id, "delete")
+    } catch (error) {
+      console.error("❌ Failed to delete customer:", error)
+      throw new Error(`Failed to delete customer: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async getCustomers(): Promise<Customer[]> {
     await this.init()
-    return this.getAllFromStore("customers")
+    try {
+      return await this.getAllFromStore("customers")
+    } catch (error) {
+      console.error("❌ Failed to get customers:", error)
+      return []
+    }
   }
 
   async getCustomerById(id: string): Promise<Customer | null> {
     await this.init()
-    return this.getFromStore("customers", id)
+    try {
+      return await this.getFromStore("customers", id)
+    } catch (error) {
+      console.error("❌ Failed to get customer by ID:", error)
+      return null
+    }
   }
 
   // Equipment operations
@@ -364,16 +351,11 @@ class CalibrationDB {
     try {
       await this.saveToStore("equipment", newEquipment)
       console.log("✅ Equipment saved to IndexedDB:", newEquipment.id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("equipment", newEquipment.id, "create")
-      }
-
+      this.addToSyncQueue("equipment", newEquipment.id, "create")
       return newEquipment
     } catch (error) {
       console.error("❌ Failed to save equipment:", error)
-      throw error
+      throw new Error(`Failed to save equipment: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -386,37 +368,54 @@ class CalibrationDB {
       synced: false,
     }
 
-    await this.saveToStore("equipment", updated)
-
-    // Add to sync queue only if we have syncManager
-    if (typeof syncManager !== "undefined") {
-      syncManager.addToSyncQueue("equipment", equipment.id, "update")
+    try {
+      await this.saveToStore("equipment", updated)
+      this.addToSyncQueue("equipment", equipment.id, "update")
+    } catch (error) {
+      console.error("❌ Failed to update equipment:", error)
+      throw new Error(`Failed to update equipment: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async deleteEquipment(id: string): Promise<void> {
     await this.init()
-    await this.deleteFromStore("equipment", id)
-
-    // Add to sync queue only if we have syncManager
-    if (typeof syncManager !== "undefined") {
-      syncManager.addToSyncQueue("equipment", id, "delete")
+    try {
+      await this.deleteFromStore("equipment", id)
+      this.addToSyncQueue("equipment", id, "delete")
+    } catch (error) {
+      console.error("❌ Failed to delete equipment:", error)
+      throw new Error(`Failed to delete equipment: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async getAllEquipment(): Promise<Equipment[]> {
     await this.init()
-    return this.getAllFromStore("equipment")
+    try {
+      return await this.getAllFromStore("equipment")
+    } catch (error) {
+      console.error("❌ Failed to get equipment:", error)
+      return []
+    }
   }
 
   async getEquipmentById(id: string): Promise<Equipment | null> {
     await this.init()
-    return this.getFromStore("equipment", id)
+    try {
+      return await this.getFromStore("equipment", id)
+    } catch (error) {
+      console.error("❌ Failed to get equipment by ID:", error)
+      return null
+    }
   }
 
   async getEquipmentByCustomer(customerId: string): Promise<Equipment[]> {
     await this.init()
-    return this.getFromStoreByIndex("equipment", "customerId", customerId)
+    try {
+      return await this.getFromStoreByIndex("equipment", "customerId", customerId)
+    } catch (error) {
+      console.error("❌ Failed to get equipment by customer:", error)
+      return []
+    }
   }
 
   // Calibration operations
@@ -434,16 +433,11 @@ class CalibrationDB {
     try {
       await this.saveToStore("calibrations", newCalibration)
       console.log("✅ Calibration saved to IndexedDB:", newCalibration.id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("calibration", newCalibration.id, "create")
-      }
-
+      this.addToSyncQueue("calibration", newCalibration.id, "create")
       return newCalibration
     } catch (error) {
       console.error("❌ Failed to save calibration:", error)
-      throw error
+      throw new Error(`Failed to save calibration: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -459,14 +453,10 @@ class CalibrationDB {
     try {
       await this.saveToStore("calibrations", updated)
       console.log("✅ Calibration updated in IndexedDB:", calibration.id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("calibration", calibration.id, "update")
-      }
+      this.addToSyncQueue("calibration", calibration.id, "update")
     } catch (error) {
       console.error("❌ Failed to update calibration:", error)
-      throw error
+      throw new Error(`Failed to update calibration: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -476,54 +466,145 @@ class CalibrationDB {
     try {
       await this.deleteFromStore("calibrations", id)
       console.log("✅ Calibration deleted from IndexedDB:", id)
-
-      // Add to sync queue only if we have syncManager
-      if (typeof syncManager !== "undefined") {
-        syncManager.addToSyncQueue("calibration", id, "delete")
-      }
+      this.addToSyncQueue("calibration", id, "delete")
     } catch (error) {
       console.error("❌ Failed to delete calibration:", error)
-      throw error
+      throw new Error(`Failed to delete calibration: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
   async getAllCalibrations(): Promise<Calibration[]> {
     await this.init()
-    return this.getAllFromStore("calibrations")
+    try {
+      return await this.getAllFromStore("calibrations")
+    } catch (error) {
+      console.error("❌ Failed to get calibrations:", error)
+      return []
+    }
   }
 
   async getCalibrationById(id: string): Promise<Calibration | null> {
     await this.init()
-    return this.getFromStore("calibrations", id)
+    try {
+      return await this.getFromStore("calibrations", id)
+    } catch (error) {
+      console.error("❌ Failed to get calibration by ID:", error)
+      return null
+    }
   }
 
   async getCalibrationsByCustomer(customerId: string): Promise<Calibration[]> {
     await this.init()
-    return this.getFromStoreByIndex("calibrations", "customerId", customerId)
+    try {
+      return await this.getFromStoreByIndex("calibrations", "customerId", customerId)
+    } catch (error) {
+      console.error("❌ Failed to get calibrations by customer:", error)
+      return []
+    }
   }
 
   async getCalibrationsByEquipment(equipmentId: string): Promise<Calibration[]> {
     await this.init()
-    return this.getFromStoreByIndex("calibrations", "equipmentId", equipmentId)
+    try {
+      return await this.getFromStoreByIndex("calibrations", "equipmentId", equipmentId)
+    } catch (error) {
+      console.error("❌ Failed to get calibrations by equipment:", error)
+      return []
+    }
   }
 
   // Sync-related operations
   async getUnsyncedCalibrations(): Promise<Calibration[]> {
     await this.init()
-    const allCalibrations = await this.getAllCalibrations()
-    return allCalibrations.filter((cal) => !cal.synced)
+    try {
+      const allCalibrations = await this.getAllCalibrations()
+      return allCalibrations.filter((cal) => !cal.synced)
+    } catch (error) {
+      console.error("❌ Failed to get unsynced calibrations:", error)
+      return []
+    }
   }
 
   async markCalibrationSynced(id: string): Promise<void> {
     await this.init()
-    const calibration = await this.getCalibrationById(id)
-    if (calibration) {
-      calibration.synced = true
-      await this.saveToStore("calibrations", calibration)
+    try {
+      const calibration = await this.getCalibrationById(id)
+      if (calibration) {
+        calibration.synced = true
+        await this.saveToStore("calibrations", calibration)
+      }
+    } catch (error) {
+      console.error("❌ Failed to mark calibration as synced:", error)
     }
   }
 
-  // Generic store operations with better error handling
+  // Get upcoming calibrations (equipment and tools)
+  async getUpcomingCalibrations(): Promise<{
+    equipment: Array<{ equipment: Equipment; customer: Customer; daysUntilDue: number }>
+    tools: Array<{ tool: CalibrationTool; daysUntilDue: number }>
+  }> {
+    await this.init()
+
+    try {
+      const allEquipment = await this.getAllEquipment()
+      const allCalibrations = await this.getAllCalibrations()
+      const allTools = await this.getTools()
+      const allCustomers = await this.getCustomers()
+
+      const now = new Date()
+      const upcomingEquipment: Array<{ equipment: Equipment; customer: Customer; daysUntilDue: number }> = []
+      const upcomingTools: Array<{ tool: CalibrationTool; daysUntilDue: number }> = []
+
+      // Find equipment that needs calibration
+      for (const equipment of allEquipment) {
+        const equipmentCalibrations = allCalibrations.filter((cal) => cal.equipmentId === equipment.id)
+        const customer = allCustomers.find((c) => c.id === equipment.customerId)
+
+        if (!customer) continue
+
+        if (equipmentCalibrations.length === 0) {
+          upcomingEquipment.push({ equipment, customer, daysUntilDue: -999 }) // Never calibrated
+          continue
+        }
+
+        const lastCalibration = equipmentCalibrations.sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        )[0]
+
+        const lastDate = new Date(lastCalibration.date)
+        const nextDate = new Date(lastDate)
+        nextDate.setFullYear(nextDate.getFullYear() + 1)
+
+        const daysUntilDue = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+        if (daysUntilDue <= 90) {
+          upcomingEquipment.push({ equipment, customer, daysUntilDue })
+        }
+      }
+
+      // Find tools that need calibration
+      for (const tool of allTools) {
+        if (!tool.nextCalibrationDate) continue
+
+        const nextDate = new Date(tool.nextCalibrationDate)
+        const daysUntilDue = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+        if (daysUntilDue <= 90) {
+          upcomingTools.push({ tool, daysUntilDue })
+        }
+      }
+
+      return {
+        equipment: upcomingEquipment.sort((a, b) => a.daysUntilDue - b.daysUntilDue),
+        tools: upcomingTools.sort((a, b) => a.daysUntilDue - b.daysUntilDue),
+      }
+    } catch (error) {
+      console.error("❌ Failed to get upcoming calibrations:", error)
+      return { equipment: [], tools: [] }
+    }
+  }
+
+  // Generic store operations with enhanced error handling
   private async saveToStore<T>(storeName: string, data: T): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -537,14 +618,23 @@ class CalibrationDB {
         const request = store.put(data)
 
         request.onerror = () => {
-          console.error(`Failed to save to ${storeName}:`, request.error)
-          reject(request.error)
+          const error = request.error || new Error("Unknown IndexedDB error")
+          console.error(`Failed to save to ${storeName}:`, error)
+          reject(error)
         }
+
         request.onsuccess = () => resolve()
 
         transaction.onerror = () => {
-          console.error(`Transaction failed for ${storeName}:`, transaction.error)
-          reject(transaction.error)
+          const error = transaction.error || new Error("Transaction failed")
+          console.error(`Transaction failed for ${storeName}:`, error)
+          reject(error)
+        }
+
+        transaction.onabort = () => {
+          const error = new Error("Transaction aborted")
+          console.error(`Transaction aborted for ${storeName}`)
+          reject(error)
         }
       } catch (error) {
         console.error(`Exception in saveToStore for ${storeName}:`, error)
@@ -566,9 +656,11 @@ class CalibrationDB {
         const request = store.get(id)
 
         request.onerror = () => {
-          console.error(`Failed to get from ${storeName}:`, request.error)
-          reject(request.error)
+          const error = request.error || new Error("Unknown IndexedDB error")
+          console.error(`Failed to get from ${storeName}:`, error)
+          reject(error)
         }
+
         request.onsuccess = () => resolve(request.result || null)
       } catch (error) {
         console.error(`Exception in getFromStore for ${storeName}:`, error)
@@ -590,9 +682,11 @@ class CalibrationDB {
         const request = store.getAll()
 
         request.onerror = () => {
-          console.error(`Failed to get all from ${storeName}:`, request.error)
-          reject(request.error)
+          const error = request.error || new Error("Unknown IndexedDB error")
+          console.error(`Failed to get all from ${storeName}:`, error)
+          reject(error)
         }
+
         request.onsuccess = () => resolve(request.result || [])
       } catch (error) {
         console.error(`Exception in getAllFromStore for ${storeName}:`, error)
@@ -615,9 +709,11 @@ class CalibrationDB {
         const request = index.getAll(value)
 
         request.onerror = () => {
-          console.error(`Failed to get from ${storeName} by index ${indexName}:`, request.error)
-          reject(request.error)
+          const error = request.error || new Error("Unknown IndexedDB error")
+          console.error(`Failed to get from ${storeName} by index ${indexName}:`, error)
+          reject(error)
         }
+
         request.onsuccess = () => resolve(request.result || [])
       } catch (error) {
         console.error(`Exception in getFromStoreByIndex for ${storeName}:`, error)
@@ -639,9 +735,11 @@ class CalibrationDB {
         const request = store.delete(id)
 
         request.onerror = () => {
-          console.error(`Failed to delete from ${storeName}:`, request.error)
-          reject(request.error)
+          const error = request.error || new Error("Unknown IndexedDB error")
+          console.error(`Failed to delete from ${storeName}:`, error)
+          reject(error)
         }
+
         request.onsuccess = () => resolve()
       } catch (error) {
         console.error(`Exception in deleteFromStore for ${storeName}:`, error)
@@ -858,6 +956,7 @@ class CalibrationDB {
               data: {
                 tolerance: 0.1,
                 capacity: 500,
+                reportNumber: "CAL-2024-001",
                 points: [
                   { applied: 0, reading: 0, error: 0, withinTolerance: true },
                   { applied: 100, reading: 100.05, error: 0.05, withinTolerance: true },
@@ -879,6 +978,7 @@ class CalibrationDB {
               data: {
                 speedTolerance: 2.0,
                 displacementTolerance: 1.0,
+                reportNumber: "CAL-2024-002",
                 speedPoints: [
                   { setSpeed: 0.1, actualSpeed: 0.102, error: 2.0, withinTolerance: true },
                   { setSpeed: 1.0, actualSpeed: 1.015, error: 1.5, withinTolerance: true },

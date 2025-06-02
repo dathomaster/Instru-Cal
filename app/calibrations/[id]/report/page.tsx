@@ -27,14 +27,22 @@ const printStyles = `
     .print\\:break-after-page {
       break-after: page;
     }
+    
+    .print\\:hidden {
+      display: none !important;
+    }
   }
 `
 
 // Add the styles to the document head
 if (typeof document !== "undefined") {
-  const styleSheet = document.createElement("style")
-  styleSheet.textContent = printStyles
-  document.head.appendChild(styleSheet)
+  const existingStyle = document.getElementById("print-styles")
+  if (!existingStyle) {
+    const styleSheet = document.createElement("style")
+    styleSheet.id = "print-styles"
+    styleSheet.textContent = printStyles
+    document.head.appendChild(styleSheet)
+  }
 }
 
 export default function CalibrationDetailPage() {
@@ -58,13 +66,20 @@ export default function CalibrationDetailPage() {
     if (shouldPrint && !loading && calibration && !error) {
       console.log("🖨️ Auto-print triggered (offline capable)")
       // Small delay to ensure the page is fully rendered
-      setTimeout(() => {
+      const printTimeout = setTimeout(() => {
         console.log("🖨️ Executing print...")
-        window.print()
-        // Remove the print parameter from URL after printing
-        const newUrl = window.location.pathname
-        window.history.replaceState({}, "", newUrl)
-      }, 1000) // Reduced delay for offline use
+        try {
+          window.print()
+          // Remove the print parameter from URL after printing
+          const newUrl = window.location.pathname
+          window.history.replaceState({}, "", newUrl)
+        } catch (printError) {
+          console.error("Print failed:", printError)
+          alert("Print failed. Please try again.")
+        }
+      }, 1000)
+
+      return () => clearTimeout(printTimeout)
     }
   }, [loading, calibration, error, shouldPrint])
 
@@ -112,23 +127,28 @@ export default function CalibrationDetailPage() {
         })
         setCalibration(foundCalibration)
 
-        // Load related data
-        const [allEquipment, allCustomers] = await Promise.all([
-          calibrationDB.getAllEquipment(),
-          calibrationDB.getCustomers(),
-        ])
+        // Load related data with error handling
+        try {
+          const [allEquipment, allCustomers] = await Promise.all([
+            calibrationDB.getAllEquipment(),
+            calibrationDB.getCustomers(),
+          ])
 
-        const foundEquipment = allEquipment.find((eq) => eq.id === foundCalibration.equipmentId)
-        const foundCustomer = allCustomers.find((c) => c.id === foundCalibration.customerId)
+          const foundEquipment = allEquipment.find((eq) => eq.id === foundCalibration.equipmentId)
+          const foundCustomer = allCustomers.find((c) => c.id === foundCalibration.customerId)
 
-        setEquipment(foundEquipment || null)
-        setCustomer(foundCustomer || null)
+          setEquipment(foundEquipment || null)
+          setCustomer(foundCustomer || null)
 
-        if (!foundEquipment) {
-          console.warn("⚠️ Equipment not found for ID:", foundCalibration.equipmentId)
-        }
-        if (!foundCustomer) {
-          console.warn("⚠️ Customer not found for ID:", foundCalibration.customerId)
+          if (!foundEquipment) {
+            console.warn("⚠️ Equipment not found for ID:", foundCalibration.equipmentId)
+          }
+          if (!foundCustomer) {
+            console.warn("⚠️ Customer not found for ID:", foundCalibration.customerId)
+          }
+        } catch (relatedDataError) {
+          console.error("❌ Error loading related data:", relatedDataError)
+          // Continue anyway - we have the calibration data
         }
       } else {
         console.error("❌ Calibration not found with ID:", calibrationId)
@@ -136,7 +156,7 @@ export default function CalibrationDetailPage() {
       }
     } catch (error) {
       console.error("❌ Error loading calibration:", error)
-      setError("Error loading calibration data. Please try again.")
+      setError(`Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setLoading(false)
     }
@@ -144,11 +164,16 @@ export default function CalibrationDetailPage() {
 
   const handlePrint = () => {
     console.log("🖨️ Manual print triggered")
-    // Ensure all content is loaded before printing - works offline
-    setTimeout(() => {
-      console.log("🖨️ Executing manual print...")
-      window.print()
-    }, 100)
+    try {
+      // Ensure all content is loaded before printing - works offline
+      setTimeout(() => {
+        console.log("🖨️ Executing manual print...")
+        window.print()
+      }, 100)
+    } catch (printError) {
+      console.error("Print failed:", printError)
+      alert("Print failed. Please try again.")
+    }
   }
 
   if (loading) {

@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, Edit } from "lucide-react"
+import { ArrowLeft, Printer, Edit, Tag } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
+import { QRCodeSticker } from "@/components/qr-code-sticker"
 
 // Add print styles
 const printStyles = `
@@ -31,6 +32,18 @@ const printStyles = `
     .print\\:hidden {
       display: none !important;
     }
+    
+    .print\\:sticker-only {
+      display: none !important;
+    }
+    
+    .print\\:sticker-mode .print\\:sticker-only {
+      display: block !important;
+    }
+    
+    .print\\:sticker-mode .print\\:certificate-only {
+      display: none !important;
+    }
   }
 `
 
@@ -50,6 +63,7 @@ export default function CalibrationDetailPage() {
   const searchParams = useSearchParams()
   const calibrationId = params.id as string
   const shouldPrint = searchParams.get("print") === "true"
+  const printSticker = searchParams.get("sticker") === "true"
 
   const [calibration, setCalibration] = useState<Calibration | null>(null)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
@@ -65,6 +79,12 @@ export default function CalibrationDetailPage() {
   useEffect(() => {
     if (shouldPrint && !loading && calibration && !error) {
       console.log("🖨️ Auto-print triggered (offline capable)")
+
+      // Add sticker mode class if printing sticker
+      if (printSticker) {
+        document.body.classList.add("print:sticker-mode")
+      }
+
       // Small delay to ensure the page is fully rendered
       const printTimeout = setTimeout(() => {
         console.log("🖨️ Executing print...")
@@ -73,15 +93,21 @@ export default function CalibrationDetailPage() {
           // Remove the print parameter from URL after printing
           const newUrl = window.location.pathname
           window.history.replaceState({}, "", newUrl)
+          // Remove sticker mode class
+          document.body.classList.remove("print:sticker-mode")
         } catch (printError) {
           console.error("Print failed:", printError)
           alert("Print failed. Please try again.")
+          document.body.classList.remove("print:sticker-mode")
         }
       }, 1000)
 
-      return () => clearTimeout(printTimeout)
+      return () => {
+        clearTimeout(printTimeout)
+        document.body.classList.remove("print:sticker-mode")
+      }
     }
-  }, [loading, calibration, error, shouldPrint])
+  }, [loading, calibration, error, shouldPrint, printSticker])
 
   const loadCalibrationData = async () => {
     try {
@@ -162,17 +188,37 @@ export default function CalibrationDetailPage() {
     }
   }
 
-  const handlePrint = () => {
-    console.log("🖨️ Manual print triggered")
+  const handlePrintCertificate = () => {
+    console.log("🖨️ Manual certificate print triggered")
     try {
       // Ensure all content is loaded before printing - works offline
       setTimeout(() => {
-        console.log("🖨️ Executing manual print...")
+        console.log("🖨️ Executing certificate print...")
         window.print()
       }, 100)
     } catch (printError) {
       console.error("Print failed:", printError)
       alert("Print failed. Please try again.")
+    }
+  }
+
+  const handlePrintSticker = () => {
+    console.log("🏷️ Manual sticker print triggered")
+    try {
+      // Add sticker mode class and print
+      document.body.classList.add("print:sticker-mode")
+      setTimeout(() => {
+        console.log("🏷️ Executing sticker print...")
+        window.print()
+        // Remove class after printing
+        setTimeout(() => {
+          document.body.classList.remove("print:sticker-mode")
+        }, 1000)
+      }, 100)
+    } catch (printError) {
+      console.error("Sticker print failed:", printError)
+      alert("Sticker print failed. Please try again.")
+      document.body.classList.remove("print:sticker-mode")
     }
   }
 
@@ -234,7 +280,11 @@ export default function CalibrationDetailPage() {
                   Edit
                 </Button>
               </Link>
-              <Button onClick={handlePrint}>
+              <Button onClick={handlePrintSticker} variant="outline">
+                <Tag className="h-4 w-4 mr-2" />
+                Print Sticker
+              </Button>
+              <Button onClick={handlePrintCertificate}>
                 <Printer className="h-4 w-4 mr-2" />
                 Print Certificate
               </Button>
@@ -243,8 +293,35 @@ export default function CalibrationDetailPage() {
         </div>
       </header>
 
-      {/* Professional Certificate Layout */}
-      <main className="max-w-4xl mx-auto p-8 bg-white print:p-0 print:max-w-none">
+      {/* QR Code Sticker - Only shown when printing sticker */}
+      <div className="print:sticker-only print:block hidden">
+        <div className="flex items-center justify-center min-h-screen">
+          <QRCodeSticker
+            calibrationId={calibration.id}
+            technician={calibration.technician}
+            date={new Date(calibration.date).toLocaleDateString()}
+            equipmentName={equipment?.name || "N/A"}
+            calibrationType={calibration.type}
+          />
+        </div>
+      </div>
+
+      {/* QR Code Sticker Preview - Hidden when printing */}
+      <div className="print:hidden max-w-4xl mx-auto px-8 pt-8">
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-4">QR Code Sticker Preview</h3>
+          <QRCodeSticker
+            calibrationId={calibration.id}
+            technician={calibration.technician}
+            date={new Date(calibration.date).toLocaleDateString()}
+            equipmentName={equipment?.name || "N/A"}
+            calibrationType={calibration.type}
+          />
+        </div>
+      </div>
+
+      {/* Professional Certificate Layout - Hidden when printing sticker */}
+      <main className="max-w-4xl mx-auto p-8 bg-white print:p-0 print:max-w-none print:certificate-only">
         <div className="print:min-h-screen">
           {/* Certificate Header */}
           <div className="border-4 border-black p-4 mb-6">
@@ -487,7 +564,11 @@ export default function CalibrationDetailPage() {
               Edit Calibration
             </Button>
           </Link>
-          <Button onClick={handlePrint} className="flex-1">
+          <Button onClick={handlePrintSticker} variant="outline" className="flex-1">
+            <Tag className="h-4 w-4 mr-2" />
+            Print Sticker
+          </Button>
+          <Button onClick={handlePrintCertificate} className="flex-1">
             <Printer className="h-4 w-4 mr-2" />
             Print Certificate
           </Button>

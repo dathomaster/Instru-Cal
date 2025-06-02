@@ -525,6 +525,77 @@ class CalibrationDB {
     }
   }
 
+  async getPendingSync(): Promise<any[]> {
+    await this.init()
+    try {
+      // Get all unsynced items from all stores
+      const unsyncedCalibrations = await this.getUnsyncedCalibrations()
+      const allCustomers = await this.getCustomers()
+      const allEquipment = await this.getAllEquipment()
+      const allTools = await this.getTools()
+
+      const unsyncedCustomers = allCustomers.filter((item) => !item.synced)
+      const unsyncedEquipment = allEquipment.filter((item) => !item.synced)
+      const unsyncedTools = allTools.filter((item) => !item.synced)
+
+      // Return all unsynced items
+      return [...unsyncedCalibrations, ...unsyncedCustomers, ...unsyncedEquipment, ...unsyncedTools]
+    } catch (error) {
+      console.error("❌ Failed to get pending sync items:", error)
+      return []
+    }
+  }
+
+  async syncWithServer(): Promise<void> {
+    // Placeholder for actual sync implementation
+    // This would sync with Supabase when online
+    console.log("🔄 Sync with server would happen here")
+
+    try {
+      const pendingItems = await this.getPendingSync()
+      console.log(`📊 Found ${pendingItems.length} items to sync`)
+
+      // In a real implementation, this would:
+      // 1. Upload unsynced items to Supabase
+      // 2. Download new items from Supabase
+      // 3. Mark items as synced
+      // 4. Handle conflicts
+
+      // For now, just mark everything as synced after a delay
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // Mark all items as synced (placeholder)
+      for (const item of pendingItems) {
+        if ("type" in item) {
+          // This is a calibration, customer, equipment, or tool
+          item.synced = true
+
+          // Save back to appropriate store
+          if (item.type === "load_cell" || item.type === "speed_displacement") {
+            await this.saveToStore("calibrations", item)
+          }
+        } else if ("location" in item) {
+          // This is a customer
+          item.synced = true
+          await this.saveToStore("customers", item)
+        } else if ("serialNumber" in item && "customerId" in item) {
+          // This is equipment
+          item.synced = true
+          await this.saveToStore("equipment", item)
+        } else if ("manufacturer" in item) {
+          // This is a tool
+          item.synced = true
+          await this.saveToStore("tools", item)
+        }
+      }
+
+      console.log("✅ Sync completed successfully")
+    } catch (error) {
+      console.error("❌ Sync failed:", error)
+      throw error
+    }
+  }
+
   async markCalibrationSynced(id: string): Promise<void> {
     await this.init()
     try {

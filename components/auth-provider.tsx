@@ -5,6 +5,7 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState, useRef } from "react"
 import { createClientSupabaseClient } from "@/lib/supabase"
 import { LoginForm } from "@/components/login-form"
+import { usePathname } from "next/navigation"
 
 interface Employee {
   id: string
@@ -22,12 +23,19 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// List of paths that don't require authentication
+const PUBLIC_PATHS = ["/public", "/api/health"]
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Employee | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createClientSupabaseClient()
   const initialized = useRef(false)
+  const pathname = usePathname()
+
+  // Check if current path is public
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname?.startsWith(path))
 
   useEffect(() => {
     if (initialized.current) return
@@ -35,6 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initAuth = async () => {
       try {
+        // Skip auth check for public paths
+        if (isPublicPath) {
+          setLoading(false)
+          return
+        }
+
         // Check for admin session first
         const adminUser = localStorage.getItem("adminUser")
         const isAdminFlag = localStorage.getItem("isAdmin")
@@ -72,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     initAuth()
-  }, [])
+  }, [isPublicPath])
 
   const signOut = async () => {
     try {
@@ -89,6 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Sign out error:", error)
     }
+  }
+
+  // For public paths, render children directly without auth check
+  if (isPublicPath) {
+    return <>{children}</>
   }
 
   if (loading) {

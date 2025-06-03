@@ -5,8 +5,30 @@ import { useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Download, ExternalLink, CalendarPlus, CheckCircle, XCircle, RefreshCw, AlertTriangle } from "lucide-react"
+import {
+  Download,
+  ExternalLink,
+  CalendarPlus,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  AlertTriangle,
+  ArrowLeft,
+} from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
+import Link from "next/link"
+
+// Decompress calibration data from QR code
+const decompressCalibrationData = (compressedData: string) => {
+  try {
+    if (!compressedData) return null
+    const jsonString = atob(compressedData)
+    return JSON.parse(jsonString)
+  } catch (error) {
+    console.warn("Failed to decompress calibration data:", error)
+    return null
+  }
+}
 
 // Robust URL parameter parsing with validation
 const parseUrlParams = (searchParams: URLSearchParams) => {
@@ -17,15 +39,21 @@ const parseUrlParams = (searchParams: URLSearchParams) => {
       equipmentName: searchParams.get("e") || "",
       calibrationType: searchParams.get("ty") || "",
       result: searchParams.get("r") || "pass",
+      compressedData: searchParams.get("data") || "",
     }
+
+    // Try to decompress full data if available
+    const fullData = params.compressedData ? decompressCalibrationData(params.compressedData) : null
 
     // Validate essential parameters
     const hasRequiredParams = params.technician && params.date && params.equipmentName && params.calibrationType
 
     return {
       ...params,
+      fullData,
       isValid: hasRequiredParams,
       isEmpty: !Object.values(params).some((v) => v && v.trim()),
+      hasFullData: !!fullData,
     }
   } catch (error) {
     console.error("❌ Error parsing URL parameters:", error)
@@ -35,8 +63,11 @@ const parseUrlParams = (searchParams: URLSearchParams) => {
       equipmentName: "",
       calibrationType: "",
       result: "pass",
+      compressedData: "",
+      fullData: null,
       isValid: false,
       isEmpty: true,
+      hasFullData: false,
     }
   }
 }
@@ -56,17 +87,6 @@ const safeLocalStorageGet = (key: string): string | null => {
   } catch (error) {
     console.warn("⚠️ localStorage access failed:", error)
     return null
-  }
-}
-
-const safeLocalStorageSet = (key: string, value: string): boolean => {
-  try {
-    if (typeof window === "undefined") return false
-    localStorage.setItem(key, value)
-    return true
-  } catch (error) {
-    console.warn("⚠️ localStorage write failed:", error)
-    return false
   }
 }
 
@@ -115,6 +135,13 @@ export default function PublicCalibrationPage() {
         throw new Error("Invalid calibration ID format")
       }
 
+      // Check if we have compressed full data in URL first
+      if (urlParams.hasFullData && urlParams.fullData) {
+        addDebugInfo("📦 Found compressed full data in QR code")
+        createViewFromCompressedData(urlParams.fullData)
+        return
+      }
+
       // Try localStorage first since it's most reliable for this offline app
       if (await tryLoadFromLocalStorage()) {
         addDebugInfo("✅ Successfully loaded from localStorage")
@@ -147,6 +174,59 @@ export default function PublicCalibrationPage() {
       setError(errorMsg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const createViewFromCompressedData = (fullData: any) => {
+    try {
+      setLoadingMethod("compressed QR data")
+      addDebugInfo("📦 Creating view from compressed QR data")
+
+      // Create calibration object from compressed data
+      const calibrationFromQR = {
+        id: fullData.id || calibrationId,
+        customerId: "qr-data",
+        equipmentId: "qr-data",
+        type: fullData.type || urlParams.calibrationType,
+        technician: fullData.technician || urlParams.technician,
+        date: fullData.date || urlParams.date,
+        temperature: fullData.temperature || "N/A",
+        humidity: fullData.humidity || "N/A",
+        toolsUsed: fullData.toolsUsed || [],
+        data: fullData.data || { reportNumber: calibrationId.substring(0, 8) },
+        result: fullData.result || urlParams.result,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as Calibration
+
+      setCalibration(calibrationFromQR)
+      setEquipment({
+        id: "qr-data",
+        name: fullData.equipment?.name || urlParams.equipmentName,
+        type: fullData.type || urlParams.calibrationType,
+        serialNumber: fullData.equipment?.serialNumber || "N/A",
+        customerId: "qr-data",
+        specifications: fullData.equipment?.specifications || {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      setCustomer({
+        id: "qr-data",
+        name: fullData.customer?.name || "N/A",
+        location: fullData.customer?.location || "N/A",
+        contact: fullData.customer?.contact || "N/A",
+        email: fullData.customer?.email || "N/A",
+        phone: fullData.customer?.phone || "N/A",
+        notes: "Data from QR code",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      addDebugInfo("✅ Created view from compressed QR data - FULL CERTIFICATE AVAILABLE")
+    } catch (error) {
+      addDebugInfo(`❌ Error creating view from compressed data: ${error}`)
+      // Fall back to basic URL parameters
+      createBasicViewFromUrlParams()
     }
   }
 
@@ -437,13 +517,183 @@ export default function PublicCalibrationPage() {
     if (!calibration) return
 
     try {
-      // Open the print-friendly version in a new window
-      const printUrl = `/calibrations/${calibration.id}/report?print=true`
-      window.open(printUrl, "_blank")
+      // If we have full data (from compressed QR or localStorage), use the full report
+      if (loadingMethod === "compressed QR data" || loadingMethod === "localStorage" || loadingMethod === "IndexedDB") {
+        const printUrl = `/calibrations/${calibration.id}/report?print=true`
+        window.open(printUrl, "_blank")
+      } else {
+        // Generate a simplified PDF for URL parameter mode
+        generateSimplifiedPDF()
+      }
     } catch (error) {
       console.error("❌ Error opening PDF:", error)
       alert("Failed to open PDF. Please try again.")
     }
+  }
+
+  const generateSimplifiedPDF = () => {
+    // Create a new window with simplified certificate content
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) {
+      alert("Please allow popups to download the PDF")
+      return
+    }
+
+    const dueDate = new Date(new Date(calibration!.date).getTime() + 365 * 24 * 60 * 60 * 1000)
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Calibration Certificate - ${calibration!.id.substring(0, 8)}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 20px; 
+              line-height: 1.4;
+            }
+            .header { 
+              text-align: center; 
+              border: 3px solid black; 
+              padding: 20px; 
+              margin-bottom: 20px;
+            }
+            .title { 
+              font-size: 24px; 
+              font-weight: bold; 
+              margin-bottom: 10px;
+            }
+            .subtitle { 
+              font-size: 16px; 
+              margin-bottom: 5px;
+            }
+            .info-grid { 
+              display: grid; 
+              grid-template-columns: 1fr 1fr; 
+              gap: 20px; 
+              margin: 20px 0;
+            }
+            .info-item { 
+              margin-bottom: 10px;
+            }
+            .label { 
+              font-weight: bold;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 4px 8px;
+              border-radius: 4px;
+              font-weight: bold;
+              color: white;
+            }
+            .pass { background-color: #16a34a; }
+            .fail { background-color: #dc2626; }
+            .current { background-color: #16a34a; }
+            .due-soon { background-color: #eab308; }
+            .expired { background-color: #dc2626; }
+            .footer {
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 2px solid black;
+              text-align: center;
+              font-size: 12px;
+            }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">CERTIFICATE OF CALIBRATION</div>
+            <div class="subtitle">
+              ${
+                calibration!.type === "load_cell"
+                  ? "Force Verification utilizing ASTM E74-18"
+                  : "Speed & Displacement Verification utilizing ASTM E2309"
+              }
+            </div>
+            <div class="subtitle">Issued By: Your Calibration Company</div>
+          </div>
+
+          <div class="info-grid">
+            <div>
+              <div class="info-item">
+                <span class="label">Certificate Number:</span> ${calibration!.id.substring(0, 8)}
+              </div>
+              <div class="info-item">
+                <span class="label">Calibration Date:</span> ${new Date(calibration!.date).toLocaleDateString()}
+              </div>
+              <div class="info-item">
+                <span class="label">Due Date:</span> ${dueDate.toLocaleDateString()}
+              </div>
+              <div class="info-item">
+                <span class="label">Technician:</span> ${calibration!.technician}
+              </div>
+            </div>
+            <div>
+              <div class="info-item">
+                <span class="label">Equipment:</span> ${equipment?.name || "N/A"}
+              </div>
+              <div class="info-item">
+                <span class="label">Serial Number:</span> ${equipment?.serialNumber || "N/A"}
+              </div>
+              <div class="info-item">
+                <span class="label">Calibration Type:</span> ${calibration!.type.replace("_", " ")}
+              </div>
+              <div class="info-item">
+                <span class="label">Result:</span> 
+                <span class="status-badge ${calibration!.result}">${calibration!.result.toUpperCase()}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin: 30px 0; padding: 20px; background-color: #f3f4f6; border-radius: 8px;">
+            <h3>Calibration Summary</h3>
+            <p>
+              This certificate confirms that the ${calibration!.type === "load_cell" ? "force measurement" : "speed and displacement"}
+              calibration was performed on <strong>${new Date(calibration!.date).toLocaleDateString()}</strong> by
+              certified technician <strong>${calibration!.technician}</strong> in accordance with ASTM 
+              ${calibration!.type === "load_cell" ? "E74-18" : "E2309"} standards.
+            </p>
+            ${
+              calibration!.result === "pass"
+                ? `<p style="color: #16a34a; font-weight: bold;">✓ The equipment passed all calibration requirements and is certified for use until ${dueDate.toLocaleDateString()}.</p>`
+                : `<p style="color: #dc2626; font-weight: bold;">✗ The equipment did not meet calibration requirements and requires adjustment or repair.</p>`
+            }
+          </div>
+
+          <div class="footer">
+            <p><strong>Certificate Authenticity</strong></p>
+            <p>This certificate can be verified by scanning the QR code or visiting the verification URL.</p>
+            <p>For questions about this calibration, please contact your calibration provider.</p>
+            <p style="margin-top: 20px; font-size: 10px;">
+              Generated from QR code scan • Limited data view • Full certificate available on original device
+            </p>
+          </div>
+
+          <div class="no-print" style="margin-top: 20px; text-align: center;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; background-color: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">
+              Print/Save as PDF
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; background-color: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+              Close
+            </button>
+          </div>
+
+          <script>
+            // Auto-print after a short delay
+            setTimeout(() => {
+              window.print();
+            }, 1000);
+          </script>
+        </body>
+      </html>
+    `
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
   }
 
   const viewFullCertificate = () => {
@@ -531,6 +781,7 @@ export default function PublicCalibrationPage() {
     )
   }
 
+  // Calculate status dynamically (this updates in real-time)
   const dueDate = new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000)
   const isExpired = new Date() > dueDate
   const daysUntilDue = Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
@@ -540,17 +791,27 @@ export default function PublicCalibrationPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-900">Calibration Certificate</h1>
-            <p className="text-gray-600 mt-2">Public View - Certificate Verification</p>
-            <Badge variant="outline" className="mt-2">
-              Loaded from {loadingMethod}
-            </Badge>
-            {warnings.length > 0 && (
-              <Badge variant="outline" className="mt-2 ml-2 bg-yellow-50 text-yellow-800 border-yellow-200">
-                {warnings.length} warning{warnings.length > 1 ? "s" : ""}
-              </Badge>
-            )}
+          <div className="flex items-center gap-4 mb-4">
+            <Link href="/calibrations">
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <div className="flex-1 text-center">
+              <h1 className="text-3xl font-bold text-gray-900">Calibration Certificate</h1>
+              <p className="text-gray-600 mt-2">Public View - Certificate Verification</p>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <Badge variant="outline">Loaded from {loadingMethod}</Badge>
+                {loadingMethod === "compressed QR data" && (
+                  <Badge className="bg-green-100 text-green-800 border-green-200">Full Certificate Available</Badge>
+                )}
+                {warnings.length > 0 && (
+                  <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-200">
+                    {warnings.length} warning{warnings.length > 1 ? "s" : ""}
+                  </Badge>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -604,6 +865,14 @@ export default function PublicCalibrationPage() {
                       >
                         {isExpired ? "EXPIRED" : daysUntilDue <= 30 ? "DUE SOON" : "CURRENT"}
                       </Badge>
+                      {!isExpired && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {daysUntilDue > 0 ? `${daysUntilDue} days remaining` : "Due today"}
+                        </p>
+                      )}
+                      {isExpired && (
+                        <p className="text-sm text-red-600 mt-1">Expired {Math.abs(daysUntilDue)} days ago</p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -667,20 +936,24 @@ export default function PublicCalibrationPage() {
                   <CalendarPlus className="h-4 w-4 mr-2" />
                   Add Due Date to Calendar
                 </Button>
-                {loadingMethod !== "URL parameters" && (
-                  <Button onClick={downloadPDF} variant="outline" className="w-full">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download PDF
-                  </Button>
-                )}
-                {loadingMethod !== "URL parameters" && (
+                <Button onClick={downloadPDF} variant="outline" className="w-full">
+                  <Download className="h-4 w-4 mr-2" />
+                  {loadingMethod === "compressed QR data" ||
+                  loadingMethod === "localStorage" ||
+                  loadingMethod === "IndexedDB"
+                    ? "Download Full PDF"
+                    : "Download Basic PDF"}
+                </Button>
+                {(loadingMethod === "compressed QR data" ||
+                  loadingMethod === "localStorage" ||
+                  loadingMethod === "IndexedDB") && (
                   <Button onClick={viewFullCertificate} variant="outline" className="w-full">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     View Full Certificate
                   </Button>
                 )}
                 {loadingMethod === "URL parameters" && (
-                  <div className="col-span-2 text-sm text-gray-500 flex items-center justify-center">
+                  <div className="text-sm text-gray-500 flex items-center justify-center">
                     <p>Limited view mode. Full certificate available on the device where calibration was performed.</p>
                   </div>
                 )}

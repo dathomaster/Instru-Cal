@@ -8,9 +8,17 @@ interface QRCodeStickerProps {
   date: string
   equipmentName: string
   calibrationType: string
+  calibrationData?: any
 }
 
-export function QRCodeSticker({ calibrationId, technician, date, equipmentName, calibrationType }: QRCodeStickerProps) {
+export function QRCodeSticker({
+  calibrationId,
+  technician,
+  date,
+  equipmentName,
+  calibrationType,
+  calibrationData,
+}: QRCodeStickerProps) {
   const [qrCodeValue, setQrCodeValue] = useState("")
   const [isClient, setIsClient] = useState(false)
   const [QRCodeComponent, setQRCodeComponent] = useState<any>(null)
@@ -29,7 +37,7 @@ export function QRCodeSticker({ calibrationId, technician, date, equipmentName, 
     const publicUrl = `${baseUrl}/public/calibration/${calibrationId}`
     setQrCodeValue(publicUrl)
 
-    // Store calibration data in localStorage for public access
+    // Store comprehensive calibration data in localStorage for public access
     if (typeof window !== "undefined") {
       const publicCalibrationData = {
         id: calibrationId,
@@ -38,17 +46,57 @@ export function QRCodeSticker({ calibrationId, technician, date, equipmentName, 
         equipmentName,
         calibrationType,
         timestamp: new Date().toISOString(),
+        // Include full calibration data if available
+        fullData: calibrationData || null,
+        // Create a simplified calibration object
+        calibration: {
+          id: calibrationId,
+          customerId: "cached",
+          equipmentId: "cached",
+          type: calibrationType,
+          technician: technician,
+          date: date,
+          temperature: calibrationData?.temperature || "N/A",
+          humidity: calibrationData?.humidity || "N/A",
+          toolsUsed: calibrationData?.toolsUsed || [],
+          data: calibrationData?.data || { reportNumber: calibrationId.substring(0, 8) },
+          result: calibrationData?.result || "pass",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        equipment: {
+          id: "cached",
+          name: equipmentName,
+          type: calibrationType,
+          serialNumber: calibrationData?.equipment?.serialNumber || "N/A",
+          customerId: "cached",
+          specifications: calibrationData?.equipment?.specifications || {},
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        customer: {
+          id: "cached",
+          name: calibrationData?.customer?.name || "N/A",
+          location: calibrationData?.customer?.location || "N/A",
+          contact: calibrationData?.customer?.contact || "N/A",
+          email: calibrationData?.customer?.email || "N/A",
+          phone: calibrationData?.customer?.phone || "N/A",
+          notes: "Data cached from QR code generation",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
       }
 
       try {
         // Store in localStorage for backup access
         localStorage.setItem(`public_calibration_${calibrationId}`, JSON.stringify(publicCalibrationData))
-        console.log("✅ Calibration data cached for public access:", calibrationId)
+        console.log("✅ Comprehensive calibration data cached for public access:", calibrationId)
+        console.log("📊 Cached data:", publicCalibrationData)
       } catch (error) {
         console.error("Failed to cache calibration data:", error)
       }
     }
-  }, [calibrationId, technician, date, equipmentName, calibrationType])
+  }, [calibrationId, technician, date, equipmentName, calibrationType, calibrationData])
 
   if (!isClient) {
     return (

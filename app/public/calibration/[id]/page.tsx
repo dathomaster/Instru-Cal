@@ -17,45 +17,143 @@ export default function PublicCalibrationPage() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [loadingMethod, setLoadingMethod] = useState<string>("indexeddb")
+  const [loadingMethod, setLoadingMethod] = useState<string>("checking")
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
 
   useEffect(() => {
     loadCalibrationData()
   }, [calibrationId])
 
+  const addDebugInfo = (info: string) => {
+    console.log(info)
+    setDebugInfo((prev) => [...prev, info])
+  }
+
   const loadCalibrationData = async () => {
     try {
       setLoading(true)
       setError(null)
+      setDebugInfo([])
 
-      console.log("🔍 Loading calibration for public view:", calibrationId)
+      addDebugInfo(`🔍 Loading calibration for public view: ${calibrationId}`)
 
-      // Try multiple data sources in sequence
-      ;(await tryLoadFromIndexedDB()) ||
-        (await tryLoadFromLocalStorage()) ||
-        (await tryLoadFromAPI()) ||
-        setError(`Calibration certificate not found. ID: ${calibrationId}`)
+      // Try localStorage first since it's most reliable for this offline app
+      if (await tryLoadFromLocalStorage()) {
+        addDebugInfo("✅ Successfully loaded from localStorage")
+        return
+      }
+
+      // Then try IndexedDB
+      if (await tryLoadFromIndexedDB()) {
+        addDebugInfo("✅ Successfully loaded from IndexedDB")
+        return
+      }
+
+      // Finally show error
+      addDebugInfo("❌ Could not find calibration in any data source")
+      setError(`Calibration certificate not found. ID: ${calibrationId}`)
     } catch (error) {
-      console.error("❌ Error loading calibration for public view:", error)
-      setError(`Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMsg = `Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`
+      addDebugInfo(`❌ ${errorMsg}`)
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }
   }
 
+  const tryLoadFromLocalStorage = async (): Promise<boolean> => {
+    try {
+      setLoadingMethod("localStorage")
+      addDebugInfo("📂 Trying to load from localStorage...")
+
+      if (typeof window === "undefined") {
+        addDebugInfo("❌ Window not available (SSR)")
+        return false
+      }
+
+      const cachedData = localStorage.getItem(`public_calibration_${calibrationId}`)
+      if (!cachedData) {
+        addDebugInfo("❌ No data found in localStorage")
+
+        // Check what keys exist in localStorage for debugging
+        const allKeys = Object.keys(localStorage).filter((key) => key.startsWith("public_calibration_"))
+        addDebugInfo(`📋 Available localStorage keys: ${allKeys.join(", ") || "none"}`)
+        return false
+      }
+
+      const parsedData = JSON.parse(cachedData)
+      addDebugInfo("📋 Found calibration in localStorage")
+      addDebugInfo(`📊 Cached data structure: ${Object.keys(parsedData).join(", ")}`)
+
+      // Use the comprehensive cached data
+      if (parsedData.calibration) {
+        setCalibration(parsedData.calibration)
+        setEquipment(parsedData.equipment)
+        setCustomer(parsedData.customer)
+        addDebugInfo("✅ Using comprehensive cached data")
+      } else {
+        // Fallback to simple data structure
+        const simplifiedCalibration = {
+          id: parsedData.id,
+          customerId: "cached",
+          equipmentId: "cached",
+          type: parsedData.calibrationType,
+          technician: parsedData.technician,
+          date: parsedData.date,
+          temperature: "N/A",
+          humidity: "N/A",
+          toolsUsed: [],
+          data: { reportNumber: parsedData.id.substring(0, 8) },
+          result: "pass",
+          createdAt: parsedData.timestamp,
+          updatedAt: parsedData.timestamp,
+        } as Calibration
+
+        setCalibration(simplifiedCalibration)
+        setEquipment({
+          id: "cached",
+          name: parsedData.equipmentName,
+          type: parsedData.calibrationType as any,
+          serialNumber: "N/A",
+          customerId: "cached",
+          specifications: {},
+          createdAt: parsedData.timestamp,
+          updatedAt: parsedData.timestamp,
+        })
+        setCustomer({
+          id: "cached",
+          name: "N/A",
+          location: "N/A",
+          contact: "N/A",
+          email: "N/A",
+          phone: "N/A",
+          notes: "Limited data available from QR code scan",
+          createdAt: parsedData.timestamp,
+          updatedAt: parsedData.timestamp,
+        })
+        addDebugInfo("✅ Using simplified cached data")
+      }
+
+      return true
+    } catch (error) {
+      addDebugInfo(`❌ Error loading from localStorage: ${error}`)
+      return false
+    }
+  }
+
   const tryLoadFromIndexedDB = async (): Promise<boolean> => {
     try {
-      setLoadingMethod("indexeddb")
-      console.log("📂 Trying to load from IndexedDB...")
+      setLoadingMethod("IndexedDB")
+      addDebugInfo("📂 Trying to load from IndexedDB...")
 
       await calibrationDB.init()
-      console.log("✅ Database initialized for public access")
+      addDebugInfo("✅ Database initialized for public access")
 
       const foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
-      console.log("📋 Found calibration in IndexedDB:", foundCalibration ? "Yes" : "No")
+      addDebugInfo(`📋 Found calibration in IndexedDB: ${foundCalibration ? "Yes" : "No"}`)
 
       if (foundCalibration) {
-        console.log("📊 Calibration data from IndexedDB:", foundCalibration)
+        addDebugInfo("📊 Calibration data from IndexedDB found")
         setCalibration(foundCalibration)
 
         const [allEquipment, allCustomers] = await Promise.all([
@@ -69,103 +167,20 @@ export default function PublicCalibrationPage() {
         setEquipment(foundEquipment || null)
         setCustomer(foundCustomer || null)
 
-        console.log("✅ Public calibration data loaded successfully from IndexedDB")
+        addDebugInfo("✅ Public calibration data loaded successfully from IndexedDB")
         return true
+      } else {
+        // Debug: show what calibrations are available
+        const allCalibrations = await calibrationDB.getAllCalibrations()
+        addDebugInfo(`📋 Available calibrations in IndexedDB: ${allCalibrations.length}`)
+        allCalibrations.forEach((cal, index) => {
+          addDebugInfo(`  ${index + 1}. ID: ${cal.id.substring(0, 8)}..., Type: ${cal.type}, Date: ${cal.date}`)
+        })
       }
 
       return false
     } catch (error) {
-      console.error("❌ Error loading from IndexedDB:", error)
-      return false
-    }
-  }
-
-  const tryLoadFromLocalStorage = async (): Promise<boolean> => {
-    try {
-      setLoadingMethod("localstorage")
-      console.log("📂 Trying to load from localStorage...")
-
-      if (typeof window === "undefined") return false
-
-      const cachedData = localStorage.getItem(`public_calibration_${calibrationId}`)
-      if (!cachedData) return false
-
-      const parsedData = JSON.parse(cachedData)
-      console.log("📋 Found calibration in localStorage:", parsedData)
-
-      // Create a simplified calibration object from cached data
-      const simplifiedCalibration = {
-        id: parsedData.id,
-        customerId: "unknown",
-        equipmentId: "unknown",
-        type: parsedData.calibrationType,
-        technician: parsedData.technician,
-        date: parsedData.date,
-        temperature: "N/A",
-        humidity: "N/A",
-        toolsUsed: [],
-        data: { reportNumber: parsedData.id.substring(0, 8) },
-        result: "pass",
-        createdAt: parsedData.timestamp,
-        updatedAt: parsedData.timestamp,
-      } as Calibration
-
-      setCalibration(simplifiedCalibration)
-
-      // Create simplified equipment and customer
-      setEquipment({
-        id: "unknown",
-        name: parsedData.equipmentName,
-        type: parsedData.calibrationType as any,
-        serialNumber: "N/A",
-        customerId: "unknown",
-        specifications: {},
-        createdAt: parsedData.timestamp,
-        updatedAt: parsedData.timestamp,
-      })
-
-      setCustomer({
-        id: "unknown",
-        name: "N/A",
-        location: "N/A",
-        contact: "N/A",
-        email: "N/A",
-        phone: "N/A",
-        notes: "Limited data available from QR code scan",
-        createdAt: parsedData.timestamp,
-        updatedAt: parsedData.timestamp,
-      })
-
-      console.log("✅ Public calibration data loaded successfully from localStorage (limited data)")
-      return true
-    } catch (error) {
-      console.error("❌ Error loading from localStorage:", error)
-      return false
-    }
-  }
-
-  const tryLoadFromAPI = async (): Promise<boolean> => {
-    try {
-      setLoadingMethod("api")
-      console.log("📂 Trying to load from API...")
-
-      const response = await fetch(`/api/public/calibration/${calibrationId}`)
-      if (!response.ok) return false
-
-      const data = await response.json()
-      console.log("📋 Found calibration in API:", data)
-
-      if (data.calibration) {
-        setCalibration(data.calibration)
-        setEquipment(data.equipment)
-        setCustomer(data.customer)
-        console.log("✅ Public calibration data loaded successfully from API")
-        return true
-      }
-
-      return false
-    } catch (error) {
-      console.error("❌ Error loading from API:", error)
+      addDebugInfo(`❌ Error loading from IndexedDB: ${error}`)
       return false
     }
   }
@@ -209,7 +224,7 @@ export default function PublicCalibrationPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading calibration certificate...</p>
-          <p className="mt-2 text-sm text-gray-500">Trying {loadingMethod}...</p>
+          <p className="mt-2 text-sm text-gray-500">Checking {loadingMethod}...</p>
         </div>
       </div>
     )
@@ -218,7 +233,7 @@ export default function PublicCalibrationPage() {
   if (error || !calibration) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-2xl">
           <CardContent className="text-center py-8">
             <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">Certificate Not Found</h2>
@@ -226,7 +241,22 @@ export default function PublicCalibrationPage() {
               {error || "The calibration certificate could not be found or may have been removed."}
             </p>
             <p className="text-sm text-gray-500 mb-4">Certificate ID: {calibrationId}</p>
-            <Button onClick={loadCalibrationData} variant="outline" className="flex items-center gap-2">
+
+            {/* Debug Information */}
+            <details className="text-left mb-4">
+              <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
+                Show Debug Information
+              </summary>
+              <div className="mt-2 p-3 bg-gray-100 rounded text-xs font-mono text-left max-h-40 overflow-y-auto">
+                {debugInfo.map((info, index) => (
+                  <div key={index} className="mb-1">
+                    {info}
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <Button onClick={loadCalibrationData} variant="outline" className="flex items-center gap-2 mx-auto">
               <RefreshCw className="h-4 w-4" />
               Try Again
             </Button>
@@ -248,11 +278,9 @@ export default function PublicCalibrationPage() {
           <div className="text-center">
             <h1 className="text-3xl font-bold text-gray-900">Calibration Certificate</h1>
             <p className="text-gray-600 mt-2">Public View - Certificate Verification</p>
-            {loadingMethod !== "indexeddb" && (
-              <Badge variant="outline" className="mt-2">
-                Limited Data Mode
-              </Badge>
-            )}
+            <Badge variant="outline" className="mt-2">
+              Loaded from {loadingMethod}
+            </Badge>
           </div>
         </div>
       </header>

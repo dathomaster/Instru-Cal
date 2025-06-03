@@ -43,7 +43,7 @@ export default function PublicCalibrationPage() {
         return
       }
 
-      // Then try IndexedDB
+      // Try IndexedDB with fuzzy matching
       if (await tryLoadFromIndexedDB()) {
         addDebugInfo("✅ Successfully loaded from IndexedDB")
         return
@@ -71,14 +71,36 @@ export default function PublicCalibrationPage() {
         return false
       }
 
-      const cachedData = localStorage.getItem(`public_calibration_${calibrationId}`)
-      if (!cachedData) {
-        addDebugInfo("❌ No data found in localStorage")
+      // First try exact match
+      let cachedData = localStorage.getItem(`public_calibration_${calibrationId}`)
 
-        // Check what keys exist in localStorage for debugging
+      if (!cachedData) {
+        addDebugInfo("❌ No exact match found in localStorage")
+
+        // Try to find by partial ID match
         const allKeys = Object.keys(localStorage).filter((key) => key.startsWith("public_calibration_"))
         addDebugInfo(`📋 Available localStorage keys: ${allKeys.join(", ") || "none"}`)
-        return false
+
+        // Check ID mappings
+        const mappings = JSON.parse(localStorage.getItem("calibration_id_mappings") || "{}")
+        addDebugInfo(`🗂️ Available ID mappings: ${Object.keys(mappings).join(", ") || "none"}`)
+
+        // Try to find a match by short ID
+        const shortId = calibrationId.substring(0, 8)
+        for (const [fullId, mapping] of Object.entries(mappings)) {
+          if (fullId.startsWith(shortId) || mapping.shortId === shortId) {
+            addDebugInfo(`🎯 Found potential match: ${fullId}`)
+            cachedData = localStorage.getItem(`public_calibration_${fullId}`)
+            if (cachedData) {
+              addDebugInfo(`✅ Found data for ${fullId}`)
+              break
+            }
+          }
+        }
+
+        if (!cachedData) {
+          return false
+        }
       }
 
       const parsedData = JSON.parse(cachedData)
@@ -149,8 +171,29 @@ export default function PublicCalibrationPage() {
       await calibrationDB.init()
       addDebugInfo("✅ Database initialized for public access")
 
-      const foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
-      addDebugInfo(`📋 Found calibration in IndexedDB: ${foundCalibration ? "Yes" : "No"}`)
+      // First try exact match
+      let foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
+      addDebugInfo(`📋 Found calibration in IndexedDB (exact): ${foundCalibration ? "Yes" : "No"}`)
+
+      if (!foundCalibration) {
+        // Try fuzzy matching - look for calibrations with similar IDs
+        const allCalibrations = await calibrationDB.getAllCalibrations()
+        addDebugInfo(`📋 Available calibrations in IndexedDB: ${allCalibrations.length}`)
+
+        const shortId = calibrationId.substring(0, 8)
+        addDebugInfo(`🔍 Looking for calibrations matching short ID: ${shortId}`)
+
+        allCalibrations.forEach((cal, index) => {
+          const calShortId = cal.id.substring(0, 8)
+          addDebugInfo(`  ${index + 1}. ID: ${calShortId}..., Type: ${cal.type}, Date: ${cal.date}`)
+
+          // Try to find a match by short ID
+          if (calShortId === shortId || cal.id === calibrationId) {
+            foundCalibration = cal
+            addDebugInfo(`🎯 Found potential match: ${cal.id}`)
+          }
+        })
+      }
 
       if (foundCalibration) {
         addDebugInfo("📊 Calibration data from IndexedDB found")
@@ -169,13 +212,6 @@ export default function PublicCalibrationPage() {
 
         addDebugInfo("✅ Public calibration data loaded successfully from IndexedDB")
         return true
-      } else {
-        // Debug: show what calibrations are available
-        const allCalibrations = await calibrationDB.getAllCalibrations()
-        addDebugInfo(`📋 Available calibrations in IndexedDB: ${allCalibrations.length}`)
-        allCalibrations.forEach((cal, index) => {
-          addDebugInfo(`  ${index + 1}. ID: ${cal.id.substring(0, 8)}..., Type: ${cal.type}, Date: ${cal.date}`)
-        })
       }
 
       return false

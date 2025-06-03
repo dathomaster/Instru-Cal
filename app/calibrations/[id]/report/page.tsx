@@ -1,70 +1,69 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams, useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Printer, Edit, Tag } from "lucide-react"
-import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
-import { QRCodeSticker } from "@/components/qr-code-sticker"
+import type React from "react"
 
-// Add print styles
-const printStyles = `
-  @media print {
-    @page {
-      margin: 0.5in;
-      size: letter;
-    }
-    
-    body {
-      -webkit-print-color-adjust: exact;
-      color-adjust: exact;
-    }
-    
-    .print\\:break-inside-avoid {
-      break-inside: avoid;
-    }
-    
-    .print\\:break-after-page {
-      break-after: page;
-    }
-    
-    .print\\:hidden {
-      display: none !important;
-    }
-    
-    .print\\:sticker-only {
-      display: none !important;
-    }
-    
-    .print\\:sticker-mode .print\\:sticker-only {
-      display: block !important;
-    }
-    
-    .print\\:sticker-mode .print\\:certificate-only {
-      display: none !important;
-    }
-  }
-`
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
+import QRCode from "qrcode.react"
 
-// Add the styles to the document head
-if (typeof document !== "undefined") {
-  const existingStyle = document.getElementById("print-styles")
-  if (!existingStyle) {
-    const styleSheet = document.createElement("style")
-    styleSheet.id = "print-styles"
-    styleSheet.textContent = printStyles
-    document.head.appendChild(styleSheet)
-  }
+// Define types
+interface Calibration {
+  id: string
+  date: string
+  technician: string
+  type: string
+  equipmentId: string
+  customerId: string
+  results: any[] // Replace 'any' with a more specific type if possible
+  [key: string]: any // Allow for other properties
 }
 
-export default function CalibrationDetailPage() {
-  const params = useParams()
-  const searchParams = useSearchParams()
-  const calibrationId = params.id as string
-  const shouldPrint = searchParams.get("print") === "true"
-  const printSticker = searchParams.get("sticker") === "true"
+interface Equipment {
+  id: string
+  name: string
+  [key: string]: any
+}
 
+interface Customer {
+  id: string
+  name: string
+  [key: string]: any
+}
+
+interface QRCodeStickerProps {
+  calibrationId: string
+  technician: string
+  date: string
+  equipmentName: string
+  calibrationType: string
+  calibrationData: any
+}
+
+// QRCodeSticker Component
+const QRCodeSticker: React.FC<QRCodeStickerProps> = ({
+  calibrationId,
+  technician,
+  date,
+  equipmentName,
+  calibrationType,
+  calibrationData,
+}) => {
+  const qrCodeValue = JSON.stringify(calibrationData)
+
+  return (
+    <div style={{ border: "1px solid black", padding: "5px", width: "200px" }}>
+      <p>Calibration ID: {calibrationId}</p>
+      <p>Equipment: {equipmentName}</p>
+      <p>Date: {date}</p>
+      <QRCode value={qrCodeValue} size={128} level="H" />
+    </div>
+  )
+}
+
+const CalibrationReportPage = () => {
+  const { id } = useParams()
   const [calibration, setCalibration] = useState<Calibration | null>(null)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -72,656 +71,126 @@ export default function CalibrationDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadCalibrationData()
-  }, [calibrationId])
-
-  // Auto-print if print parameter is present
-  useEffect(() => {
-    if (shouldPrint && !loading && calibration && !error) {
-      console.log("🖨️ Auto-print triggered (offline capable)")
-
-      // Add sticker mode class if printing sticker
-      if (printSticker) {
-        document.body.classList.add("print:sticker-mode")
-      }
-
-      // Small delay to ensure the page is fully rendered
-      const printTimeout = setTimeout(() => {
-        console.log("🖨️ Executing print...")
-        try {
-          window.print()
-          // Remove the print parameter from URL after printing
-          const newUrl = window.location.pathname
-          window.history.replaceState({}, "", newUrl)
-          // Remove sticker mode class
-          document.body.classList.remove("print:sticker-mode")
-        } catch (printError) {
-          console.error("Print failed:", printError)
-          alert("Print failed. Please try again.")
-          document.body.classList.remove("print:sticker-mode")
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        // Fetch calibration data
+        const calibrationResponse = await fetch(`/api/calibrations/${id}`)
+        if (!calibrationResponse.ok) {
+          throw new Error(`Failed to fetch calibration: ${calibrationResponse.status}`)
         }
-      }, 1000)
+        const calibrationData = await calibrationResponse.json()
+        setCalibration(calibrationData)
 
-      return () => {
-        clearTimeout(printTimeout)
-        document.body.classList.remove("print:sticker-mode")
-      }
-    }
-  }, [loading, calibration, error, shouldPrint, printSticker])
-
-  const loadCalibrationData = async () => {
-    try {
-      console.log("🔍 Loading calibration data for ID:", calibrationId)
-      setLoading(true)
-      setError(null)
-
-      // Ensure database is properly initialized
-      await calibrationDB.init()
-
-      // Try to get the calibration directly first
-      let foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
-
-      if (!foundCalibration) {
-        console.log("⏳ Calibration not found immediately, waiting and retrying...")
-        // Wait a bit longer and try again
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
-      }
-
-      if (!foundCalibration) {
-        console.log("🔍 Still not found, checking all calibrations...")
-        // Last resort: check all calibrations
-        const allCalibrations = await calibrationDB.getAllCalibrations()
-        console.log(
-          "Available calibrations:",
-          allCalibrations.map((c) => ({
-            id: c.id,
-            date: c.date,
-            type: c.type,
-            technician: c.technician,
-            reportNumber: c.data?.reportNumber,
-          })),
-        )
-        foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
-      }
-
-      if (foundCalibration) {
-        console.log("✅ Found calibration:", {
-          id: foundCalibration.id,
-          reportNumber: foundCalibration.data?.reportNumber,
-          technician: foundCalibration.technician,
-        })
-        setCalibration(foundCalibration)
-
-        // Load related data with error handling
-        try {
-          const [allEquipment, allCustomers] = await Promise.all([
-            calibrationDB.getAllEquipment(),
-            calibrationDB.getCustomers(),
-          ])
-
-          const foundEquipment = allEquipment.find((eq) => eq.id === foundCalibration.equipmentId)
-          const foundCustomer = allCustomers.find((c) => c.id === foundCalibration.customerId)
-
-          setEquipment(foundEquipment || null)
-          setCustomer(foundCustomer || null)
-
-          if (!foundEquipment) {
-            console.warn("⚠️ Equipment not found for ID:", foundCalibration.equipmentId)
-          }
-          if (!foundCustomer) {
-            console.warn("⚠️ Customer not found for ID:", foundCalibration.customerId)
-          }
-        } catch (relatedDataError) {
-          console.error("❌ Error loading related data:", relatedDataError)
-          // Continue anyway - we have the calibration data
+        // Fetch equipment data
+        const equipmentResponse = await fetch(`/api/equipments/${calibrationData.equipmentId}`)
+        if (!equipmentResponse.ok) {
+          throw new Error(`Failed to fetch equipment: ${equipmentResponse.status}`)
         }
-      } else {
-        console.error("❌ Calibration not found with ID:", calibrationId)
-        setError(`Calibration with ID "${calibrationId}" not found.`)
+        const equipmentData = await equipmentResponse.json()
+        setEquipment(equipmentData)
+
+        // Fetch customer data
+        const customerResponse = await fetch(`/api/customers/${calibrationData.customerId}`)
+        if (!customerResponse.ok) {
+          throw new Error(`Failed to fetch customer: ${customerResponse.status}`)
+        }
+        const customerData = await customerResponse.json()
+        setCustomer(customerData)
+
+        setLoading(false)
+      } catch (err: any) {
+        setError(err.message)
+        setLoading(false)
       }
-    } catch (error) {
-      console.error("❌ Error loading calibration:", error)
-      setError(`Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setLoading(false)
     }
-  }
 
-  const handlePrintCertificate = () => {
-    console.log("🖨️ Manual certificate print triggered")
-    try {
-      // Ensure all content is loaded before printing - works offline
-      setTimeout(() => {
-        console.log("🖨️ Executing certificate print...")
-        window.print()
-      }, 100)
-    } catch (printError) {
-      console.error("Print failed:", printError)
-      alert("Print failed. Please try again.")
-    }
-  }
+    fetchData()
+  }, [id])
 
-  const handlePrintSticker = () => {
-    console.log("🏷️ Manual sticker print triggered")
-    try {
-      // Add sticker mode class and print
-      document.body.classList.add("print:sticker-mode")
-      setTimeout(() => {
-        console.log("🏷️ Executing sticker print...")
-        window.print()
-        // Remove class after printing
-        setTimeout(() => {
-          document.body.classList.remove("print:sticker-mode")
-        }, 1000)
-      }, 100)
-    } catch (printError) {
-      console.error("Sticker print failed:", printError)
-      alert("Sticker print failed. Please try again.")
-      document.body.classList.remove("print:sticker-mode")
+  const generatePDF = () => {
+    if (!calibration || !equipment || !customer) {
+      console.error("Calibration, equipment, or customer data is missing.")
+      return
     }
+
+    const doc = new jsPDF()
+
+    // Title
+    doc.text("Calibration Report", 10, 10)
+
+    // Calibration Details
+    doc.text(`Calibration ID: ${calibration.id}`, 10, 20)
+    doc.text(`Date: ${calibration.date}`, 10, 30)
+    doc.text(`Technician: ${calibration.technician}`, 10, 40)
+    doc.text(`Type: ${calibration.type}`, 10, 50)
+
+    // Equipment Details
+    doc.text(`Equipment Name: ${equipment.name}`, 10, 60)
+
+    // Customer Details
+    doc.text(`Customer Name: ${customer.name}`, 10, 70)
+
+    // Results Table
+    const resultsData = calibration.results.map((result: any) => [result.name, result.value, result.unit])
+
+    autoTable(doc, {
+      head: [["Name", "Value", "Unit"]],
+      body: resultsData,
+      startY: 80,
+    })
+
+    // Save the PDF
+    doc.save(`calibration_report_${calibration.id}.pdf`)
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading calibration report...</p>
-          <p className="mt-2 text-sm text-gray-500">ID: {calibrationId}</p>
-        </div>
-      </div>
-    )
+    return <div>Loading...</div>
   }
 
-  if (error || !calibration) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Calibration Report Not Found</h2>
-          <p className="text-gray-600 mb-4">
-            {error || `The calibration report with ID "${calibrationId}" could not be found.`}
-          </p>
-          <div className="space-y-2 mb-4">
-            <p className="text-sm text-gray-500">Calibration ID: {calibrationId}</p>
-            <p className="text-sm text-gray-500">Please check the ID and try again.</p>
-          </div>
-          <Link href="/calibrations">
-            <Button>Back to Calibrations</Button>
-          </Link>
-        </div>
-      </div>
-    )
+  if (error) {
+    return <div>Error: {error}</div>
   }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Screen Header - Hidden when printing */}
-      <header className="bg-white shadow-sm border-b print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-4">
-              <Link href="/calibrations">
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Calibration Certificate</h1>
-                {calibration.data?.reportNumber && (
-                  <p className="text-sm text-gray-600">Report #: {calibration.data.reportNumber}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href={`/calibrations/${calibrationId}/edit`}>
-                <Button variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              </Link>
-              <Button onClick={handlePrintSticker} variant="outline">
-                <Tag className="h-4 w-4 mr-2" />
-                Print Sticker
-              </Button>
-              <Button onClick={handlePrintCertificate}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print Certificate
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* QR Code Sticker - Only shown when printing sticker */}
-      <div className="print:sticker-only print:block hidden">
-        <div className="flex items-center justify-center min-h-screen">
-          <QRCodeSticker
-            calibrationId={calibration.id}
-            technician={calibration.technician}
-            date={new Date(calibration.date).toLocaleDateString()}
-            equipmentName={equipment?.name || "N/A"}
-            calibrationType={calibration.type}
-          />
-        </div>
-      </div>
-
-      {/* QR Code Sticker Preview - Hidden when printing */}
-      <div className="print:hidden max-w-4xl mx-auto px-8 pt-8">
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-4">QR Code Sticker Preview</h3>
-          <QRCodeSticker
-            calibrationId={calibration.id}
-            technician={calibration.technician}
-            date={new Date(calibration.date).toLocaleDateString()}
-            equipmentName={equipment?.name || "N/A"}
-            calibrationType={calibration.type}
-          />
-        </div>
-      </div>
-
-      {/* Professional Certificate Layout - Hidden when printing sticker */}
-      <main className="max-w-4xl mx-auto p-8 bg-white print:p-0 print:max-w-none print:certificate-only">
-        <div className="print:min-h-screen">
-          {/* Certificate Header */}
-          <div className="border-4 border-black p-4 mb-6">
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <h1 className="text-3xl font-bold text-center mb-2">CERTIFICATE OF CALIBRATION</h1>
-                <p className="text-center text-lg mb-1">
-                  {calibration.type === "load_cell"
-                    ? "Force Verification utilizing ASTM E74-18"
-                    : "Speed & Displacement Verification utilizing ASTM E2309"}
-                </p>
-                <p className="text-center text-lg">Issued By: Your Calibration Company</p>
-              </div>
-              <div className="ml-4">
-                {/* Accreditation Badge Placeholder */}
-                <div className="w-24 h-24 border-2 border-gray-300 rounded-full flex items-center justify-center text-xs text-center">
-                  ACCREDITED
-                  <br />
-                  CERT #1377.01
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-8 mt-4 pt-4 border-t-2 border-black">
-              <div>
-                <strong>DATE OF CALIBRATION:</strong> {new Date(calibration.date).toLocaleDateString()}
-              </div>
-              <div>
-                <strong>CERTIFICATE NUMBER:</strong> {calibration.data?.reportNumber || calibration.id}
-              </div>
-              <div>
-                <strong>DATE OF ISSUE:</strong> {new Date(calibration.date).toLocaleDateString()}
-              </div>
-              <div className="text-right">
-                <div className="border border-black p-2 inline-block">
-                  <div className="text-sm">Page 1 of 1</div>
-                  <div className="text-sm mt-1">Recommended Due Date:</div>
-                  <div className="font-bold">
-                    {new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString()}
-                  </div>
-                  <div
-                    className={`text-lg font-bold mt-2 ${calibration.result === "pass" ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {calibration.result === "pass" ? "Pass" : "Fail"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Company Information */}
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            <div>
-              <div className="text-4xl font-bold mb-2">YC</div>
-              <div className="text-lg font-bold">Your Calibration Company</div>
-              <div>123 Industrial Drive</div>
-              <div>Your City, ST 12345</div>
-              <div className="mt-4">
-                <div>
-                  <strong>Phone:</strong> (555) 123-4567
-                </div>
-                <div>
-                  <strong>Fax:</strong> (555) 123-4568
-                </div>
-                <div>
-                  <strong>Email:</strong> calibration@yourcompany.com
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong>Verified By:</strong>
-                </div>
-                <div>{calibration.technician}</div>
-                <div>
-                  <strong>Verifier Title:</strong>
-                </div>
-                <div>Calibration Technician</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Customer and Equipment Information */}
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            <div className="space-y-2 text-sm">
-              <div>
-                <strong>Customer:</strong> {customer?.name || "N/A"}
-              </div>
-              <div>
-                <strong>Location Of Calibration Address:</strong> {customer?.location || "N/A"}
-              </div>
-              <div>
-                <strong>City:</strong> {customer?.location?.split(",")[0] || "N/A"}
-              </div>
-              <div>
-                <strong>State:</strong> {customer?.location?.split(",")[1]?.trim() || "N/A"}
-              </div>
-              <div>
-                <strong>Zip Code:</strong> N/A
-              </div>
-              <div>
-                <strong>Specific Location of Calibration:</strong> Test Lab
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div>
-                <strong>Date of Calibration:</strong> {new Date(calibration.date).toLocaleDateString()}
-              </div>
-              <div>
-                <strong>Machine Make / Model:</strong> {equipment?.name || "N/A"}
-              </div>
-              <div>
-                <strong>Machine SN:</strong> {equipment?.serialNumber || "N/A"}
-              </div>
-              <div>
-                <strong>Indicating Device:</strong> Digital Display
-              </div>
-              <div>
-                <strong>Indicating Device SN:</strong> N/A
-              </div>
-              {calibration.type === "load_cell" && (
-                <>
-                  <div>
-                    <strong>Load Cell Model:</strong> {equipment?.name || "N/A"}
-                  </div>
-                  <div>
-                    <strong>Load Cell SN:</strong> {equipment?.serialNumber || "N/A"}
-                  </div>
-                  <div>
-                    <strong>Fullscale Capacity:</strong> {calibration.data?.capacity || "N/A"} (Lbs)
-                  </div>
-                  <div>
-                    <strong>Verified Capacity:</strong> {calibration.data?.capacity || "N/A"} (Lbs)
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Environmental Conditions */}
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            <div className="space-y-2 text-sm">
-              <div>
-                <strong>Contact Name:</strong> {customer?.contact || "N/A"}
-              </div>
-              <div>
-                <strong>Phone:</strong> {customer?.phone || "N/A"}
-              </div>
-              <div>
-                <strong>Email:</strong> {customer?.email || "N/A"}
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div>
-                <strong>Ambient Temp:</strong> Before: {calibration.data?.tempBefore || calibration.temperature}°F
-                After: {calibration.data?.tempAfter || calibration.temperature}°F
-              </div>
-              <div>
-                <strong>Gravity Multiplier:</strong> {calibration.data?.gravityMultiplier || "1.0000"}
-              </div>
-              <div>
-                <strong>Equipment Condition:</strong> Good
-              </div>
-            </div>
-          </div>
-
-          {/* Calibration Data */}
-          <div className="mb-6">
-            {calibration.type === "load_cell" ? (
-              <ProfessionalLoadCellResults data={calibration.data} />
-            ) : (
-              <ProfessionalSpeedDisplacementResults data={calibration.data} />
-            )}
-          </div>
-
-          {/* Standards Used */}
-          <div className="mb-6">
-            <h3 className="text-lg font-bold mb-2 text-center">STANDARDS / EQUIPMENT USED FOR CALIBRATION</h3>
-            <div className="text-xs border border-black p-2">
-              <p>Devices listed are traceable to NIST</p>
-              <p className="mt-2">
-                {calibration.type === "load_cell"
-                  ? "Load cells calibrated by certified laboratory with 10,000 Lbs capacity, traceable to NIST standards."
-                  : "Speed and displacement measuring devices calibrated by certified laboratory, traceable to NIST standards."}
-              </p>
-            </div>
-          </div>
-
-          {/* Certification Statement */}
-          <div className="mb-6 text-xs">
-            <p>
-              This certifies that the testing system described above has had a{" "}
-              {calibration.type === "load_cell" ? "force" : "speed and displacement"} verification performed in
-              accordance with the latest specifications of ASTM {calibration.type === "load_cell" ? "E74-18" : "E2309"},
-              "Standard Practices for{" "}
-              {calibration.type === "load_cell"
-                ? "Force Calibration and Verification of Testing Machines"
-                : "Speed and Displacement Calibration"}
-              " employing standard procedures.
-            </p>
-          </div>
-
-          {/* Signature Section */}
-          <div className="grid grid-cols-3 gap-8 mt-8 pt-4 border-t-2 border-black">
-            <div>
-              <div className="text-sm font-bold mb-2">Authorized and Verified By:</div>
-              <div className="text-lg font-bold">{calibration.technician}</div>
-              <div className="mt-4 border-b border-black w-48"></div>
-              <div className="text-xs mt-1">Signature</div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-bold mb-2">Issue Date:</div>
-              <div className="text-lg">{new Date(calibration.date).toLocaleDateString()}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm">Certificate Valid Until:</div>
-              <div className="font-bold">
-                {new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* Screen Actions - Hidden when printing */}
-      <div className="max-w-4xl mx-auto px-8 pb-8 print:hidden">
-        <div className="flex gap-4">
-          <Link href="/calibrations" className="flex-1">
-            <Button variant="outline" className="w-full">
-              Back to Calibrations
-            </Button>
-          </Link>
-          <Link href={`/calibrations/${calibrationId}/edit`} className="flex-1">
-            <Button variant="outline" className="w-full">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Calibration
-            </Button>
-          </Link>
-          <Button onClick={handlePrintSticker} variant="outline" className="flex-1">
-            <Tag className="h-4 w-4 mr-2" />
-            Print Sticker
-          </Button>
-          <Button onClick={handlePrintCertificate} className="flex-1">
-            <Printer className="h-4 w-4 mr-2" />
-            Print Certificate
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProfessionalLoadCellResults({ data }: { data: any }) {
-  if (!data || !data.tensionRun1) {
-    return <p className="text-gray-500">No calibration data available</p>
-  }
-
-  // Combine all data points from all runs for display
-  const allPoints = [
-    ...(data.tensionRun1 || []).map((p: any, i: number) => ({ ...p, run: "Tension Run 1", index: i })),
-    ...(data.tensionRun2 || []).map((p: any, i: number) => ({ ...p, run: "Tension Run 2", index: i })),
-    ...(data.compressionRun1 || []).map((p: any, i: number) => ({ ...p, run: "Compression Run 1", index: i })),
-    ...(data.compressionRun2 || []).map((p: any, i: number) => ({ ...p, run: "Compression Run 2", index: i })),
-  ].filter((p) => p.appliedLoad > 0) // Only show non-zero points
 
   return (
     <div>
-      <h3 className="text-lg font-bold mb-4 text-center">CALIBRATION DATA</h3>
-
-      <div className="mb-4 text-sm">
-        <div>
-          <strong>Required Tolerance:</strong> ±{data.tolerance}%
-        </div>
-        <div>
-          <strong>Method:</strong> Follow-the-Force (FTF)
-        </div>
-        <div>
-          <strong>Values taken with tester:</strong> As Found As Left
-        </div>
-      </div>
-
-      <table className="w-full border-collapse border border-black text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border border-black p-2 text-left">Run</th>
-            <th className="border border-black p-2 text-left">Applied Load (Lbs)</th>
-            <th className="border border-black p-2 text-left">Indicated Reading</th>
-            <th className="border border-black p-2 text-left">Unit Error</th>
-            <th className="border border-black p-2 text-left">% Error</th>
-            <th className="border border-black p-2 text-left">Within Tolerance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {allPoints.slice(0, 20).map((point: any, index: number) => (
-            <tr key={index}>
-              <td className="border border-black p-2 text-xs">{point.run}</td>
-              <td className="border border-black p-2 font-medium">{point.appliedOverride || point.appliedLoad}</td>
-              <td className="border border-black p-2">{point.unitUnderTest}</td>
-              <td className="border border-black p-2">{point.unitError.toFixed(4)}</td>
-              <td className="border border-black p-2">
-                <span className={Math.abs(point.runError) <= data.tolerance ? "text-green-600" : "text-red-600"}>
-                  {point.runError.toFixed(3)}%
-                </span>
-              </td>
-              <td className="border border-black p-2 text-center">
-                {Math.abs(point.runError) <= data.tolerance ? "✓" : "✗"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="mt-4 text-xs">
-        <p>
-          <strong>Notes:</strong> Calibration performed using Follow-the-Force method. All readings taken at ambient
-          temperature. Maximum error observed: {Math.max(...allPoints.map((p) => Math.abs(p.runError))).toFixed(3)}%
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function ProfessionalSpeedDisplacementResults({ data }: { data: any }) {
-  if (!data || (!data.speedPoints && !data.displacementPoints)) {
-    return <p className="text-gray-500">No calibration data available</p>
-  }
-
-  return (
-    <div className="space-y-6">
-      {data.speedPoints && (
-        <div>
-          <h3 className="text-lg font-bold mb-4 text-center">SPEED CALIBRATION DATA</h3>
-
-          <table className="w-full border-collapse border border-black text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-black p-2 text-left">Set Speed (in/min)</th>
-                <th className="border border-black p-2 text-left">Actual Speed (in/min)</th>
-                <th className="border border-black p-2 text-left">Unit Error</th>
-                <th className="border border-black p-2 text-left">% Error</th>
-                <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.speedPoints.map((point: any, index: number) => (
-                <tr key={index}>
-                  <td className="border border-black p-2 font-medium">{point.setSpeed}</td>
-                  <td className="border border-black p-2">{point.actualSpeed}</td>
-                  <td className="border border-black p-2">{(point.actualSpeed - point.setSpeed).toFixed(3)}</td>
-                  <td className="border border-black p-2">
-                    <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
-                      {point.error.toFixed(2)}%
-                    </span>
-                  </td>
-                  <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(2)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <h1>Calibration Report</h1>
+      {calibration && equipment && customer && (
+        <>
+          <p>Calibration ID: {calibration.id}</p>
+          <p>Date: {calibration.date}</p>
+          <p>Technician: {calibration.technician}</p>
+          <p>Type: {calibration.type}</p>
+          <p>Equipment Name: {equipment.name}</p>
+          <p>Customer Name: {customer.name}</p>
+          <h2>Results:</h2>
+          <ul>
+            {calibration.results.map((result: any, index: number) => (
+              <li key={index}>
+                {result.name}: {result.value} {result.unit}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
+      <button onClick={generatePDF}>Generate PDF</button>
 
-      {data.displacementPoints && (
-        <div>
-          <h3 className="text-lg font-bold mb-4 text-center">DISPLACEMENT CALIBRATION DATA</h3>
-
-          <table className="w-full border-collapse border border-black text-sm">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-black p-2 text-left">Set Displacement (in)</th>
-                <th className="border border-black p-2 text-left">Actual Displacement (in)</th>
-                <th className="border border-black p-2 text-left">Unit Error</th>
-                <th className="border border-black p-2 text-left">% Error</th>
-                <th className="border border-black p-2 text-left">% Error + Uncertainty</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.displacementPoints.map((point: any, index: number) => (
-                <tr key={index}>
-                  <td className="border border-black p-2 font-medium">{point.setDisplacement}</td>
-                  <td className="border border-black p-2">{point.actualDisplacement}</td>
-                  <td className="border border-black p-2">
-                    {(point.actualDisplacement - point.setDisplacement).toFixed(4)}
-                  </td>
-                  <td className="border border-black p-2">
-                    <span className={point.withinTolerance ? "text-green-600" : "text-red-600"}>
-                      {point.error.toFixed(3)}%
-                    </span>
-                  </td>
-                  <td className="border border-black p-2">{(Math.abs(point.error) + 0.25).toFixed(3)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {calibration && equipment && customer && (
+        <QRCodeSticker
+          calibrationId={calibration.id}
+          technician={calibration.technician}
+          date={calibration.date}
+          equipmentName={equipment.name}
+          calibrationType={calibration.type}
+          calibrationData={{
+            ...calibration,
+            equipment: equipment,
+            customer: customer,
+          }}
+        />
       )}
     </div>
   )
 }
+
+export default CalibrationReportPage

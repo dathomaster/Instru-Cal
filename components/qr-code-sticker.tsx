@@ -25,10 +25,15 @@ export function QRCodeSticker({
 
   useEffect(() => {
     setIsClient(true)
-    // Dynamically import QR code component only on client side
-    import("qrcode.react").then((module) => {
-      setQRCodeComponent(() => module.QRCodeSVG)
-    })
+    // Dynamically import QR code component only on client side with correct named export
+    import("qrcode.react")
+      .then((module) => {
+        // Use the correct named export QRCodeSVG
+        setQRCodeComponent(() => module.QRCodeSVG)
+      })
+      .catch((error) => {
+        console.error("Failed to load QR code component:", error)
+      })
   }, [])
 
   useEffect(() => {
@@ -187,10 +192,16 @@ export function QRCodeSticker({
       <h3 className="text-sm font-bold text-center mb-2">Calibration Sticker</h3>
       <div className="flex items-center justify-center mb-2">
         {qrCodeValue && QRCodeComponent ? (
-          <QRCodeComponent value={qrCodeValue} size={128} level="H" className="border border-gray-200" />
+          <QRCodeComponent
+            value={qrCodeValue}
+            size={128}
+            level="H"
+            className="border border-gray-200"
+            includeMargin={true}
+          />
         ) : (
           <div className="w-32 h-32 border border-gray-200 flex items-center justify-center text-xs text-gray-500">
-            Loading QR Code...
+            {QRCodeComponent ? "Generating QR Code..." : "Loading QR Code..."}
           </div>
         )}
       </div>

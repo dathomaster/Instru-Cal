@@ -49,9 +49,11 @@ export default function PublicCalibrationPage() {
         return
       }
 
-      // Finally show error
-      addDebugInfo("❌ Could not find calibration in any data source")
-      setError(`Calibration certificate not found. ID: ${calibrationId}`)
+      // Show helpful error message
+      addDebugInfo("❌ Could not find calibration in local storage")
+      setError(
+        `Calibration certificate not found locally. This may happen if:\n• The QR code was generated on a different device\n• Browser data was cleared\n• The calibration was not properly saved\n\nCertificate ID: ${calibrationId}`,
+      )
     } catch (error) {
       const errorMsg = `Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`
       addDebugInfo(`❌ ${errorMsg}`)
@@ -79,15 +81,17 @@ export default function PublicCalibrationPage() {
 
         // Try to find by partial ID match
         const allKeys = Object.keys(localStorage).filter((key) => key.startsWith("public_calibration_"))
-        addDebugInfo(`📋 Available localStorage keys: ${allKeys.join(", ") || "none"}`)
+        addDebugInfo(`📋 Available localStorage keys: ${allKeys.length} found`)
 
         // Check ID mappings
         const mappings = JSON.parse(localStorage.getItem("calibration_id_mappings") || "{}")
-        addDebugInfo(`🗂️ Available ID mappings: ${Object.keys(mappings).join(", ") || "none"}`)
+        addDebugInfo(`🗂️ Available ID mappings: ${Object.keys(mappings).length} found`)
 
         // Try to find a match by short ID
         const shortId = calibrationId.substring(0, 8)
-        for (const [fullId, mapping] of Object.entries(mappings)) {
+        addDebugInfo(`🔍 Searching for short ID: ${shortId}`)
+
+        for (const [fullId, mapping] of Object.entries(mappings as any)) {
           if (fullId.startsWith(shortId) || mapping.shortId === shortId) {
             addDebugInfo(`🎯 Found potential match: ${fullId}`)
             cachedData = localStorage.getItem(`public_calibration_${fullId}`)
@@ -98,7 +102,28 @@ export default function PublicCalibrationPage() {
           }
         }
 
+        // If still no match, try searching through all cached calibrations
         if (!cachedData) {
+          addDebugInfo("🔍 Searching through all cached calibrations...")
+          for (const key of allKeys) {
+            const data = localStorage.getItem(key)
+            if (data) {
+              try {
+                const parsed = JSON.parse(data)
+                if (parsed.id && (parsed.id === calibrationId || parsed.id.startsWith(shortId))) {
+                  addDebugInfo(`🎯 Found match in ${key}`)
+                  cachedData = data
+                  break
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+
+        if (!cachedData) {
+          addDebugInfo("❌ No matching calibration found in localStorage")
           return false
         }
       }
@@ -243,14 +268,14 @@ export default function PublicCalibrationPage() {
     if (!calibration) return
 
     // Open the print-friendly version in a new window
-    const printUrl = `/calibrations/${calibrationId}/report?print=true`
+    const printUrl = `/calibrations/${calibration.id}/report?print=true`
     window.open(printUrl, "_blank")
   }
 
   const viewFullCertificate = () => {
     if (!calibration) return
 
-    const certificateUrl = `/calibrations/${calibrationId}/report`
+    const certificateUrl = `/calibrations/${calibration.id}/report`
     window.open(certificateUrl, "_blank")
   }
 
@@ -273,15 +298,25 @@ export default function PublicCalibrationPage() {
           <CardContent className="text-center py-8">
             <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">Certificate Not Found</h2>
-            <p className="text-gray-600 mb-4">
+            <div className="text-gray-600 mb-4 whitespace-pre-line">
               {error || "The calibration certificate could not be found or may have been removed."}
-            </p>
-            <p className="text-sm text-gray-500 mb-4">Certificate ID: {calibrationId}</p>
+            </div>
+
+            {/* Helpful Instructions */}
+            <div className="bg-blue-50 p-4 rounded-lg mb-4 text-left">
+              <h3 className="font-medium text-blue-900 mb-2">💡 Troubleshooting Tips</h3>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Make sure you're using the same device that generated the QR code</li>
+                <li>• Check that browser data hasn't been cleared</li>
+                <li>• Try scanning the QR code again from the original report</li>
+                <li>• Contact your calibration provider if the issue persists</li>
+              </ul>
+            </div>
 
             {/* Debug Information */}
             <details className="text-left mb-4">
               <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
-                Show Debug Information
+                Show Technical Details
               </summary>
               <div className="mt-2 p-3 bg-gray-100 rounded text-xs font-mono text-left max-h-40 overflow-y-auto">
                 {debugInfo.map((info, index) => (

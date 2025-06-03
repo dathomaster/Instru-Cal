@@ -27,10 +27,16 @@ export default function PublicCalibrationPage() {
       setLoading(true)
       setError(null)
 
+      console.log("🔍 Loading calibration for public view:", calibrationId)
+
       await calibrationDB.init()
+      console.log("✅ Database initialized for public access")
+
       const foundCalibration = await calibrationDB.getCalibrationById(calibrationId)
+      console.log("📋 Found calibration:", foundCalibration ? "Yes" : "No")
 
       if (foundCalibration) {
+        console.log("📊 Calibration data:", foundCalibration)
         setCalibration(foundCalibration)
 
         const [allEquipment, allCustomers] = await Promise.all([
@@ -43,12 +49,21 @@ export default function PublicCalibrationPage() {
 
         setEquipment(foundEquipment || null)
         setCustomer(foundCustomer || null)
+
+        console.log("✅ Public calibration data loaded successfully")
       } else {
-        setError(`Calibration certificate not found.`)
+        console.error("❌ Calibration not found in database")
+        // Try to get all calibrations to debug
+        const allCalibrations = await calibrationDB.getAllCalibrations()
+        console.log(
+          "📋 Available calibrations:",
+          allCalibrations.map((c) => ({ id: c.id, type: c.type, date: c.date })),
+        )
+        setError(`Calibration certificate not found. ID: ${calibrationId}`)
       }
     } catch (error) {
-      console.error("Error loading calibration:", error)
-      setError(`Error loading calibration data.`)
+      console.error("❌ Error loading calibration for public view:", error)
+      setError(`Error loading calibration data: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -106,9 +121,12 @@ export default function PublicCalibrationPage() {
             <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">Certificate Not Found</h2>
             <p className="text-gray-600 mb-4">
-              The calibration certificate could not be found or may have been removed.
+              {error || "The calibration certificate could not be found or may have been removed."}
             </p>
-            <p className="text-sm text-gray-500">Certificate ID: {calibrationId}</p>
+            <p className="text-sm text-gray-500 mb-4">Certificate ID: {calibrationId}</p>
+            <Button onClick={loadCalibrationData} variant="outline">
+              Try Again
+            </Button>
           </CardContent>
         </Card>
       </div>

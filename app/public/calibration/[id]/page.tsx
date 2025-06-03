@@ -5,30 +5,8 @@ import { useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  Download,
-  ExternalLink,
-  CalendarPlus,
-  CheckCircle,
-  XCircle,
-  RefreshCw,
-  AlertTriangle,
-  ArrowLeft,
-} from "lucide-react"
+import { Download, ExternalLink, CalendarPlus, CheckCircle, XCircle, RefreshCw, AlertTriangle } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
-import Link from "next/link"
-
-// Decompress calibration data from QR code
-const decompressCalibrationData = (compressedData: string) => {
-  try {
-    if (!compressedData) return null
-    const jsonString = atob(compressedData)
-    return JSON.parse(jsonString)
-  } catch (error) {
-    console.warn("Failed to decompress calibration data:", error)
-    return null
-  }
-}
 
 // Robust URL parameter parsing with validation
 const parseUrlParams = (searchParams: URLSearchParams) => {
@@ -39,21 +17,15 @@ const parseUrlParams = (searchParams: URLSearchParams) => {
       equipmentName: searchParams.get("e") || "",
       calibrationType: searchParams.get("ty") || "",
       result: searchParams.get("r") || "pass",
-      compressedData: searchParams.get("data") || "",
     }
-
-    // Try to decompress full data if available
-    const fullData = params.compressedData ? decompressCalibrationData(params.compressedData) : null
 
     // Validate essential parameters
     const hasRequiredParams = params.technician && params.date && params.equipmentName && params.calibrationType
 
     return {
       ...params,
-      fullData,
       isValid: hasRequiredParams,
       isEmpty: !Object.values(params).some((v) => v && v.trim()),
-      hasFullData: !!fullData,
     }
   } catch (error) {
     console.error("❌ Error parsing URL parameters:", error)
@@ -63,11 +35,8 @@ const parseUrlParams = (searchParams: URLSearchParams) => {
       equipmentName: "",
       calibrationType: "",
       result: "pass",
-      compressedData: "",
-      fullData: null,
       isValid: false,
       isEmpty: true,
-      hasFullData: false,
     }
   }
 }
@@ -87,6 +56,17 @@ const safeLocalStorageGet = (key: string): string | null => {
   } catch (error) {
     console.warn("⚠️ localStorage access failed:", error)
     return null
+  }
+}
+
+const safeLocalStorageSet = (key: string, value: string): boolean => {
+  try {
+    if (typeof window === "undefined") return false
+    localStorage.setItem(key, value)
+    return true
+  } catch (error) {
+    console.warn("⚠️ localStorage write failed:", error)
+    return false
   }
 }
 
@@ -135,13 +115,6 @@ export default function PublicCalibrationPage() {
         throw new Error("Invalid calibration ID format")
       }
 
-      // Check if we have compressed full data in URL first
-      if (urlParams.hasFullData && urlParams.fullData) {
-        addDebugInfo("📦 Found compressed full data in QR code")
-        createViewFromCompressedData(urlParams.fullData)
-        return
-      }
-
       // Try localStorage first since it's most reliable for this offline app
       if (await tryLoadFromLocalStorage()) {
         addDebugInfo("✅ Successfully loaded from localStorage")
@@ -174,59 +147,6 @@ export default function PublicCalibrationPage() {
       setError(errorMsg)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const createViewFromCompressedData = (fullData: any) => {
-    try {
-      setLoadingMethod("compressed QR data")
-      addDebugInfo("📦 Creating view from compressed QR data")
-
-      // Create calibration object from compressed data
-      const calibrationFromQR = {
-        id: fullData.id || calibrationId,
-        customerId: "qr-data",
-        equipmentId: "qr-data",
-        type: fullData.type || urlParams.calibrationType,
-        technician: fullData.technician || urlParams.technician,
-        date: fullData.date || urlParams.date,
-        temperature: fullData.temperature || "N/A",
-        humidity: fullData.humidity || "N/A",
-        toolsUsed: fullData.toolsUsed || [],
-        data: fullData.data || { reportNumber: calibrationId.substring(0, 8) },
-        result: fullData.result || urlParams.result,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      } as Calibration
-
-      setCalibration(calibrationFromQR)
-      setEquipment({
-        id: "qr-data",
-        name: fullData.equipment?.name || urlParams.equipmentName,
-        type: fullData.type || urlParams.calibrationType,
-        serialNumber: fullData.equipment?.serialNumber || "N/A",
-        customerId: "qr-data",
-        specifications: fullData.equipment?.specifications || {},
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      setCustomer({
-        id: "qr-data",
-        name: fullData.customer?.name || "N/A",
-        location: fullData.customer?.location || "N/A",
-        contact: fullData.customer?.contact || "N/A",
-        email: fullData.customer?.email || "N/A",
-        phone: fullData.customer?.phone || "N/A",
-        notes: "Data from QR code",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-
-      addDebugInfo("✅ Created view from compressed QR data - FULL CERTIFICATE AVAILABLE")
-    } catch (error) {
-      addDebugInfo(`❌ Error creating view from compressed data: ${error}`)
-      // Fall back to basic URL parameters
-      createBasicViewFromUrlParams()
     }
   }
 
@@ -517,13 +437,13 @@ export default function PublicCalibrationPage() {
     if (!calibration) return
 
     try {
-      // If we have full data (from compressed QR or localStorage), use the full report
-      if (loadingMethod === "compressed QR data" || loadingMethod === "localStorage" || loadingMethod === "IndexedDB") {
-        const printUrl = `/calibrations/${calibration.id}/report?print=true`
-        window.open(printUrl, "_blank")
-      } else {
+      if (loadingMethod === "URL parameters") {
         // Generate a simplified PDF for URL parameter mode
         generateSimplifiedPDF()
+      } else {
+        // Open the full report for cached data
+        const printUrl = `/calibrations/${calibration.id}/report?print=true`
+        window.open(printUrl, "_blank")
       }
     } catch (error) {
       console.error("❌ Error opening PDF:", error)
@@ -791,27 +711,17 @@ export default function PublicCalibrationPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4 mb-4">
-            <Link href="/calibrations">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="flex-1 text-center">
-              <h1 className="text-3xl font-bold text-gray-900">Calibration Certificate</h1>
-              <p className="text-gray-600 mt-2">Public View - Certificate Verification</p>
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <Badge variant="outline">Loaded from {loadingMethod}</Badge>
-                {loadingMethod === "compressed QR data" && (
-                  <Badge className="bg-green-100 text-green-800 border-green-200">Full Certificate Available</Badge>
-                )}
-                {warnings.length > 0 && (
-                  <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-200">
-                    {warnings.length} warning{warnings.length > 1 ? "s" : ""}
-                  </Badge>
-                )}
-              </div>
-            </div>
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900">Calibration Certificate</h1>
+            <p className="text-gray-600 mt-2">Public View - Certificate Verification</p>
+            <Badge variant="outline" className="mt-2">
+              Loaded from {loadingMethod}
+            </Badge>
+            {warnings.length > 0 && (
+              <Badge variant="outline" className="mt-2 ml-2 bg-yellow-50 text-yellow-800 border-yellow-200">
+                {warnings.length} warning{warnings.length > 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
         </div>
       </header>
@@ -938,15 +848,9 @@ export default function PublicCalibrationPage() {
                 </Button>
                 <Button onClick={downloadPDF} variant="outline" className="w-full">
                   <Download className="h-4 w-4 mr-2" />
-                  {loadingMethod === "compressed QR data" ||
-                  loadingMethod === "localStorage" ||
-                  loadingMethod === "IndexedDB"
-                    ? "Download Full PDF"
-                    : "Download Basic PDF"}
+                  {loadingMethod === "URL parameters" ? "Download Basic PDF" : "Download PDF"}
                 </Button>
-                {(loadingMethod === "compressed QR data" ||
-                  loadingMethod === "localStorage" ||
-                  loadingMethod === "IndexedDB") && (
+                {loadingMethod !== "URL parameters" && (
                   <Button onClick={viewFullCertificate} variant="outline" className="w-full">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     View Full Certificate

@@ -49,64 +49,6 @@ const sanitizeForUrl = (value: string, maxLength = 50): string => {
     .trim()
 }
 
-// Compress calibration data for QR code embedding
-const compressCalibrationData = (calibrationData: any): string => {
-  try {
-    if (!calibrationData) return ""
-
-    // Create a minimal but complete representation
-    const compressed = {
-      // Core calibration info
-      id: calibrationData.id,
-      type: calibrationData.type,
-      technician: calibrationData.technician,
-      date: calibrationData.date,
-      result: calibrationData.result,
-      temperature: calibrationData.temperature,
-      humidity: calibrationData.humidity,
-
-      // Equipment info
-      equipment: {
-        name: calibrationData.equipment?.name,
-        serialNumber: calibrationData.equipment?.serialNumber,
-        specifications: calibrationData.equipment?.specifications,
-      },
-
-      // Customer info
-      customer: {
-        name: calibrationData.customer?.name,
-        location: calibrationData.customer?.location,
-        contact: calibrationData.customer?.contact,
-        email: calibrationData.customer?.email,
-        phone: calibrationData.customer?.phone,
-      },
-
-      // Calibration data (essential parts)
-      data: {
-        reportNumber: calibrationData.data?.reportNumber,
-        capacity: calibrationData.data?.capacity,
-        tolerance: calibrationData.data?.tolerance,
-        // Include some key measurement points for authenticity
-        sampleData:
-          calibrationData.data?.tensionRun1?.slice(0, 3) || calibrationData.data?.speedPoints?.slice(0, 3) || [],
-        gravityMultiplier: calibrationData.data?.gravityMultiplier,
-        tempBefore: calibrationData.data?.tempBefore,
-        tempAfter: calibrationData.data?.tempAfter,
-      },
-
-      // Tools used (just names)
-      toolsUsed: calibrationData.toolsUsed?.map((tool: any) => tool.name || tool) || [],
-    }
-
-    // Convert to base64 encoded JSON
-    const jsonString = JSON.stringify(compressed)
-    return btoa(jsonString)
-  } catch (error) {
-    console.warn("Failed to compress calibration data:", error)
-    return ""
-  }
-}
-
 export function QRCodeSticker({
   calibrationId,
   technician,
@@ -170,7 +112,7 @@ export function QRCodeSticker({
         console.warn("⚠️ Base URL not available, using relative path")
       }
 
-      // Create essential data with sanitization
+      // Create a compact representation of essential data with sanitization
       const essentialData = {
         id: calibrationId.substring(0, 8), // Short ID for URL brevity
         t: sanitizeForUrl(technician, 20), // Technician (sanitized and shortened)
@@ -178,13 +120,6 @@ export function QRCodeSticker({
         e: sanitizeForUrl(equipmentName, 30), // Equipment name (sanitized and shortened)
         ty: calibrationType, // Calibration type
         r: calibrationData?.result || "pass", // Result (pass/fail)
-      }
-
-      // Try to include compressed full data if available
-      let compressedData = ""
-      if (calibrationData) {
-        compressedData = compressCalibrationData(calibrationData)
-        console.log("📦 Compressed calibration data size:", compressedData.length, "characters")
       }
 
       console.log("📊 Essential data for QR code:", essentialData)
@@ -197,15 +132,6 @@ export function QRCodeSticker({
             params.append(key, value.toString())
           }
         })
-
-        // Add compressed data if it's not too large (QR codes have limits)
-        if (compressedData && compressedData.length < 1500) {
-          // Conservative limit
-          params.append("data", compressedData)
-          console.log("✅ Including compressed full data in QR code")
-        } else if (compressedData) {
-          console.log("⚠️ Compressed data too large for QR code, using basic mode")
-        }
       } catch (paramError) {
         console.error("❌ Error encoding URL parameters:", paramError)
         setError("Failed to encode calibration data")

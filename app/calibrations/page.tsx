@@ -20,6 +20,7 @@ import {
   Filter,
   SortAsc,
   SortDesc,
+  ArrowLeft,
 } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
 import { ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar } from "recharts"
@@ -251,7 +252,14 @@ export default function CalibrationsPage() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
-            <h1 className="text-2xl font-bold text-gray-900">Calibrations</h1>
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </Link>
+              <h1 className="text-2xl font-bold text-gray-900">Calibrations</h1>
+            </div>
             <div className="flex items-center gap-2">
               <Button onClick={handleForceSync} disabled={syncing} variant="outline">
                 {syncing ? (

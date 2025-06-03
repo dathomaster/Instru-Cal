@@ -5,20 +5,78 @@ import { useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Download, ExternalLink, CalendarPlus, CheckCircle, XCircle, RefreshCw } from "lucide-react"
+import { Download, ExternalLink, CalendarPlus, CheckCircle, XCircle, RefreshCw, AlertTriangle } from "lucide-react"
 import { calibrationDB, type Calibration, type Equipment, type Customer } from "@/lib/db"
+
+// Robust URL parameter parsing with validation
+const parseUrlParams = (searchParams: URLSearchParams) => {
+  try {
+    const params = {
+      technician: searchParams.get("t") || "",
+      date: searchParams.get("d") || "",
+      equipmentName: searchParams.get("e") || "",
+      calibrationType: searchParams.get("ty") || "",
+      result: searchParams.get("r") || "pass",
+    }
+
+    // Validate essential parameters
+    const hasRequiredParams = params.technician && params.date && params.equipmentName && params.calibrationType
+
+    return {
+      ...params,
+      isValid: hasRequiredParams,
+      isEmpty: !Object.values(params).some((v) => v && v.trim()),
+    }
+  } catch (error) {
+    console.error("❌ Error parsing URL parameters:", error)
+    return {
+      technician: "",
+      date: "",
+      equipmentName: "",
+      calibrationType: "",
+      result: "pass",
+      isValid: false,
+      isEmpty: true,
+    }
+  }
+}
+
+// Robust date validation
+const validateDate = (dateString: string): boolean => {
+  if (!dateString) return false
+  const date = new Date(dateString)
+  return !isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100
+}
+
+// Safe localStorage access with error handling
+const safeLocalStorageGet = (key: string): string | null => {
+  try {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem(key)
+  } catch (error) {
+    console.warn("⚠️ localStorage access failed:", error)
+    return null
+  }
+}
+
+const safeLocalStorageSet = (key: string, value: string): boolean => {
+  try {
+    if (typeof window === "undefined") return false
+    localStorage.setItem(key, value)
+    return true
+  } catch (error) {
+    console.warn("⚠️ localStorage write failed:", error)
+    return false
+  }
+}
 
 export default function PublicCalibrationPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const calibrationId = params.id as string
 
-  // Extract data from URL parameters (for public access)
-  const urlTechnician = searchParams.get("t") || ""
-  const urlDate = searchParams.get("d") || ""
-  const urlEquipmentName = searchParams.get("e") || ""
-  const urlCalibrationType = searchParams.get("ty") || ""
-  const urlResult = searchParams.get("r") || "pass"
+  // Parse URL parameters with validation
+  const urlParams = parseUrlParams(searchParams)
 
   const [calibration, setCalibration] = useState<Calibration | null>(null)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
@@ -27,6 +85,7 @@ export default function PublicCalibrationPage() {
   const [error, setError] = useState<string | null>(null)
   const [loadingMethod, setLoadingMethod] = useState<string>("checking")
   const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
 
   useEffect(() => {
     loadCalibrationData()
@@ -37,13 +96,24 @@ export default function PublicCalibrationPage() {
     setDebugInfo((prev) => [...prev, info])
   }
 
+  const addWarning = (warning: string) => {
+    console.warn(warning)
+    setWarnings((prev) => [...prev, warning])
+  }
+
   const loadCalibrationData = async () => {
     try {
       setLoading(true)
       setError(null)
       setDebugInfo([])
+      setWarnings([])
 
       addDebugInfo(`🔍 Loading calibration for public view: ${calibrationId}`)
+
+      // Validate calibration ID
+      if (!calibrationId || calibrationId.length < 8) {
+        throw new Error("Invalid calibration ID format")
+      }
 
       // Try localStorage first since it's most reliable for this offline app
       if (await tryLoadFromLocalStorage()) {
@@ -57,18 +127,20 @@ export default function PublicCalibrationPage() {
         return
       }
 
-      // If we have URL parameters, create a basic view from them
-      if (urlTechnician && urlDate && urlEquipmentName && urlCalibrationType) {
+      // If we have valid URL parameters, create a basic view from them
+      if (urlParams.isValid) {
         addDebugInfo("📝 Creating basic view from URL parameters")
         createBasicViewFromUrlParams()
         return
       }
 
-      // Show helpful error message
-      addDebugInfo("❌ Could not find calibration in local storage")
-      setError(
-        `Calibration certificate not found locally. This may happen if:\n• The QR code was generated on a different device\n• Browser data was cleared\n• The calibration was not properly saved\n\nCertificate ID: ${calibrationId}`,
-      )
+      // Show helpful error message with troubleshooting
+      addDebugInfo("❌ Could not find calibration data")
+      const errorMessage = urlParams.isEmpty
+        ? `Calibration certificate not found. This may happen if:\n• The QR code was generated on a different device\n• Browser data was cleared\n• The calibration was not properly saved\n\nCertificate ID: ${calibrationId}`
+        : `Calibration certificate data is incomplete. The QR code may be damaged or from an older version.\n\nCertificate ID: ${calibrationId}`
+
+      setError(errorMessage)
     } catch (error) {
       const errorMsg = `Error loading calibration data: ${error instanceof Error ? error.message : "Unknown error"}`
       addDebugInfo(`❌ ${errorMsg}`)
@@ -79,50 +151,71 @@ export default function PublicCalibrationPage() {
   }
 
   const createBasicViewFromUrlParams = () => {
-    setLoadingMethod("URL parameters")
-    addDebugInfo("📝 Creating view from URL parameters")
+    try {
+      setLoadingMethod("URL parameters")
+      addDebugInfo("📝 Creating view from URL parameters")
 
-    // Create a simplified calibration object from URL parameters
-    const simplifiedCalibration = {
-      id: calibrationId,
-      customerId: "url-param",
-      equipmentId: "url-param",
-      type: urlCalibrationType,
-      technician: urlTechnician,
-      date: urlDate,
-      temperature: "N/A",
-      humidity: "N/A",
-      toolsUsed: [],
-      data: { reportNumber: calibrationId.substring(0, 8) },
-      result: urlResult,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    } as Calibration
+      // Validate date
+      if (!validateDate(urlParams.date)) {
+        addWarning("Invalid date in URL parameters")
+        urlParams.date = new Date().toISOString().split("T")[0] // Fallback to today
+      }
 
-    setCalibration(simplifiedCalibration)
-    setEquipment({
-      id: "url-param",
-      name: urlEquipmentName,
-      type: urlCalibrationType as any,
-      serialNumber: "N/A",
-      customerId: "url-param",
-      specifications: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    setCustomer({
-      id: "url-param",
-      name: "N/A",
-      location: "N/A",
-      contact: "N/A",
-      email: "N/A",
-      phone: "N/A",
-      notes: "Limited data available from QR code",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
+      // Validate calibration type
+      if (!["load_cell", "speed_displacement"].includes(urlParams.calibrationType)) {
+        addWarning("Invalid calibration type in URL parameters")
+        urlParams.calibrationType = "load_cell" // Fallback
+      }
 
-    addDebugInfo("✅ Created basic view from URL parameters")
+      // Create a simplified calibration object from URL parameters
+      const simplifiedCalibration = {
+        id: calibrationId,
+        customerId: "url-param",
+        equipmentId: "url-param",
+        type: urlParams.calibrationType,
+        technician: urlParams.technician || "Unknown",
+        date: urlParams.date,
+        temperature: "N/A",
+        humidity: "N/A",
+        toolsUsed: [],
+        data: { reportNumber: calibrationId.substring(0, 8) },
+        result: urlParams.result === "fail" ? "fail" : "pass", // Ensure valid result
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as Calibration
+
+      setCalibration(simplifiedCalibration)
+      setEquipment({
+        id: "url-param",
+        name: urlParams.equipmentName || "Unknown Equipment",
+        type: urlParams.calibrationType as any,
+        serialNumber: "N/A",
+        customerId: "url-param",
+        specifications: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      setCustomer({
+        id: "url-param",
+        name: "N/A",
+        location: "N/A",
+        contact: "N/A",
+        email: "N/A",
+        phone: "N/A",
+        notes: "Limited data available from QR code",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      addDebugInfo("✅ Created basic view from URL parameters")
+
+      if (warnings.length > 0) {
+        addDebugInfo(`⚠️ ${warnings.length} warnings during URL parameter parsing`)
+      }
+    } catch (error) {
+      addDebugInfo(`❌ Error creating view from URL parameters: ${error}`)
+      throw error
+    }
   }
 
   const tryLoadFromLocalStorage = async (): Promise<boolean> => {
@@ -135,8 +228,8 @@ export default function PublicCalibrationPage() {
         return false
       }
 
-      // First try exact match
-      let cachedData = localStorage.getItem(`public_calibration_${calibrationId}`)
+      // First try exact match with error handling
+      let cachedData = safeLocalStorageGet(`public_calibration_${calibrationId}`)
 
       if (!cachedData) {
         addDebugInfo("❌ No exact match found in localStorage")
@@ -145,8 +238,9 @@ export default function PublicCalibrationPage() {
         const allKeys = Object.keys(localStorage).filter((key) => key.startsWith("public_calibration_"))
         addDebugInfo(`📋 Available localStorage keys: ${allKeys.length} found`)
 
-        // Check ID mappings
-        const mappings = JSON.parse(localStorage.getItem("calibration_id_mappings") || "{}")
+        // Check ID mappings with error handling
+        const mappingsData = safeLocalStorageGet("calibration_id_mappings")
+        const mappings = mappingsData ? JSON.parse(mappingsData) : {}
         addDebugInfo(`🗂️ Available ID mappings: ${Object.keys(mappings).length} found`)
 
         // Try to find a match by short ID
@@ -156,7 +250,7 @@ export default function PublicCalibrationPage() {
         for (const [fullId, mapping] of Object.entries(mappings as any)) {
           if (fullId.startsWith(shortId) || mapping.shortId === shortId) {
             addDebugInfo(`🎯 Found potential match: ${fullId}`)
-            cachedData = localStorage.getItem(`public_calibration_${fullId}`)
+            cachedData = safeLocalStorageGet(`public_calibration_${fullId}`)
             if (cachedData) {
               addDebugInfo(`✅ Found data for ${fullId}`)
               break
@@ -168,7 +262,7 @@ export default function PublicCalibrationPage() {
         if (!cachedData) {
           addDebugInfo("🔍 Searching through all cached calibrations...")
           for (const key of allKeys) {
-            const data = localStorage.getItem(key)
+            const data = safeLocalStorageGet(key)
             if (data) {
               try {
                 const parsed = JSON.parse(data)
@@ -178,7 +272,7 @@ export default function PublicCalibrationPage() {
                   break
                 }
               } catch (e) {
-                // Skip invalid JSON
+                addDebugInfo(`⚠️ Skipping invalid JSON in ${key}`)
               }
             }
           }
@@ -190,44 +284,52 @@ export default function PublicCalibrationPage() {
         }
       }
 
-      const parsedData = JSON.parse(cachedData)
+      // Parse cached data with error handling
+      let parsedData
+      try {
+        parsedData = JSON.parse(cachedData)
+      } catch (parseError) {
+        addDebugInfo("❌ Failed to parse cached data")
+        return false
+      }
+
       addDebugInfo("📋 Found calibration in localStorage")
       addDebugInfo(`📊 Cached data structure: ${Object.keys(parsedData).join(", ")}`)
 
-      // Use the comprehensive cached data
+      // Use the comprehensive cached data with fallbacks
       if (parsedData.calibration) {
         setCalibration(parsedData.calibration)
-        setEquipment(parsedData.equipment)
-        setCustomer(parsedData.customer)
+        setEquipment(parsedData.equipment || null)
+        setCustomer(parsedData.customer || null)
         addDebugInfo("✅ Using comprehensive cached data")
       } else {
-        // Fallback to simple data structure
+        // Fallback to simple data structure with validation
         const simplifiedCalibration = {
-          id: parsedData.id,
+          id: parsedData.id || calibrationId,
           customerId: "cached",
           equipmentId: "cached",
-          type: parsedData.calibrationType,
-          technician: parsedData.technician,
-          date: parsedData.date,
+          type: parsedData.calibrationType || "load_cell",
+          technician: parsedData.technician || "Unknown",
+          date: parsedData.date || new Date().toISOString(),
           temperature: "N/A",
           humidity: "N/A",
           toolsUsed: [],
-          data: { reportNumber: parsedData.id.substring(0, 8) },
+          data: { reportNumber: (parsedData.id || calibrationId).substring(0, 8) },
           result: "pass",
-          createdAt: parsedData.timestamp,
-          updatedAt: parsedData.timestamp,
+          createdAt: parsedData.timestamp || new Date().toISOString(),
+          updatedAt: parsedData.timestamp || new Date().toISOString(),
         } as Calibration
 
         setCalibration(simplifiedCalibration)
         setEquipment({
           id: "cached",
-          name: parsedData.equipmentName,
-          type: parsedData.calibrationType as any,
+          name: parsedData.equipmentName || "Unknown Equipment",
+          type: parsedData.calibrationType || "load_cell",
           serialNumber: "N/A",
           customerId: "cached",
           specifications: {},
-          createdAt: parsedData.timestamp,
-          updatedAt: parsedData.timestamp,
+          createdAt: parsedData.timestamp || new Date().toISOString(),
+          updatedAt: parsedData.timestamp || new Date().toISOString(),
         })
         setCustomer({
           id: "cached",
@@ -237,8 +339,8 @@ export default function PublicCalibrationPage() {
           email: "N/A",
           phone: "N/A",
           notes: "Limited data available from QR code scan",
-          createdAt: parsedData.timestamp,
-          updatedAt: parsedData.timestamp,
+          createdAt: parsedData.timestamp || new Date().toISOString(),
+          updatedAt: parsedData.timestamp || new Date().toISOString(),
         })
         addDebugInfo("✅ Using simplified cached data")
       }
@@ -311,34 +413,49 @@ export default function PublicCalibrationPage() {
   const addToCalendar = () => {
     if (!calibration) return
 
-    const dueDate = new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000)
-    const title = `Calibration Due: ${equipment?.name || "Equipment"}`
-    const description = `Calibration due for ${equipment?.name || "Equipment"} (S/N: ${equipment?.serialNumber || "N/A"})\n\nOriginal calibration performed by: ${calibration.technician}\nCertificate ID: ${calibration.id}\nCustomer: ${customer?.name || "N/A"}`
+    try {
+      const dueDate = new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000)
+      const title = `Calibration Due: ${equipment?.name || "Equipment"}`
+      const description = `Calibration due for ${equipment?.name || "Equipment"} (S/N: ${equipment?.serialNumber || "N/A"})\n\nOriginal calibration performed by: ${calibration.technician}\nCertificate ID: ${calibration.id}\nCustomer: ${customer?.name || "N/A"}`
 
-    const startDate = dueDate.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z"
-    const endDate =
-      new Date(dueDate.getTime() + 2 * 60 * 60 * 1000).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z"
+      const startDate = dueDate.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z"
+      const endDate =
+        new Date(dueDate.getTime() + 2 * 60 * 60 * 1000).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z"
 
-    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
-      title,
-    )}&dates=${startDate}/${endDate}&details=${encodeURIComponent(description)}`
+      const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+        title,
+      )}&dates=${startDate}/${endDate}&details=${encodeURIComponent(description)}`
 
-    window.open(calendarUrl, "_blank")
+      window.open(calendarUrl, "_blank")
+    } catch (error) {
+      console.error("❌ Error creating calendar event:", error)
+      alert("Failed to create calendar event. Please try again.")
+    }
   }
 
   const downloadPDF = () => {
     if (!calibration) return
 
-    // Open the print-friendly version in a new window
-    const printUrl = `/calibrations/${calibration.id}/report?print=true`
-    window.open(printUrl, "_blank")
+    try {
+      // Open the print-friendly version in a new window
+      const printUrl = `/calibrations/${calibration.id}/report?print=true`
+      window.open(printUrl, "_blank")
+    } catch (error) {
+      console.error("❌ Error opening PDF:", error)
+      alert("Failed to open PDF. Please try again.")
+    }
   }
 
   const viewFullCertificate = () => {
     if (!calibration) return
 
-    const certificateUrl = `/calibrations/${calibration.id}/report`
-    window.open(certificateUrl, "_blank")
+    try {
+      const certificateUrl = `/calibrations/${calibration.id}/report`
+      window.open(certificateUrl, "_blank")
+    } catch (error) {
+      console.error("❌ Error opening certificate:", error)
+      alert("Failed to open certificate. Please try again.")
+    }
   }
 
   if (loading) {
@@ -374,6 +491,21 @@ export default function PublicCalibrationPage() {
                 <li>• Contact your calibration provider if the issue persists</li>
               </ul>
             </div>
+
+            {/* Warnings */}
+            {warnings.length > 0 && (
+              <div className="bg-yellow-50 p-4 rounded-lg mb-4 text-left">
+                <h3 className="font-medium text-yellow-900 mb-2 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Warnings
+                </h3>
+                <ul className="text-sm text-yellow-800 space-y-1">
+                  {warnings.map((warning, index) => (
+                    <li key={index}>• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Debug Information */}
             <details className="text-left mb-4">
@@ -414,6 +546,11 @@ export default function PublicCalibrationPage() {
             <Badge variant="outline" className="mt-2">
               Loaded from {loadingMethod}
             </Badge>
+            {warnings.length > 0 && (
+              <Badge variant="outline" className="mt-2 ml-2 bg-yellow-50 text-yellow-800 border-yellow-200">
+                {warnings.length} warning{warnings.length > 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
         </div>
       </header>

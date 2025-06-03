@@ -25,7 +25,7 @@ export function QRCodeSticker({
 
   useEffect(() => {
     setIsClient(true)
-    // Dynamically import QR code component only on client side with correct named export
+    // Dynamically import QR code component only on client side
     import("qrcode.react")
       .then((module) => {
         // Use the correct named export QRCodeSVG
@@ -37,12 +37,31 @@ export function QRCodeSticker({
   }, [])
 
   useEffect(() => {
-    // Create URL for public certificate view
+    // Create a data-rich URL for public certificate view
+    // This allows anyone to view basic certificate info without needing local storage
     const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
-    const publicUrl = `${baseUrl}/public/calibration/${calibrationId}`
+
+    // Create a compact representation of essential data
+    const essentialData = {
+      id: calibrationId.substring(0, 8), // Short ID for URL brevity
+      t: technician.substring(0, 20), // Technician (shortened)
+      d: date, // Calibration date
+      e: equipmentName.substring(0, 30), // Equipment name (shortened)
+      ty: calibrationType, // Calibration type
+      r: calibrationData?.result || "pass", // Result (pass/fail)
+    }
+
+    // Encode the data as URL parameters
+    const params = new URLSearchParams()
+    Object.entries(essentialData).forEach(([key, value]) => {
+      params.append(key, value as string)
+    })
+
+    // Create the public URL with embedded data
+    const publicUrl = `${baseUrl}/public/calibration/${calibrationId}?${params.toString()}`
     setQrCodeValue(publicUrl)
 
-    // Store comprehensive calibration data in localStorage for public access
+    // Also store comprehensive calibration data in localStorage for enhanced experience on same device
     if (typeof window !== "undefined") {
       console.log("🏷️ Generating QR code for calibration:", calibrationId)
       console.log("📊 Full calibration data available:", !!calibrationData)

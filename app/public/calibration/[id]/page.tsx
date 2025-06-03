@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +10,15 @@ import { calibrationDB, type Calibration, type Equipment, type Customer } from "
 
 export default function PublicCalibrationPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const calibrationId = params.id as string
+
+  // Extract data from URL parameters (for public access)
+  const urlTechnician = searchParams.get("t") || ""
+  const urlDate = searchParams.get("d") || ""
+  const urlEquipmentName = searchParams.get("e") || ""
+  const urlCalibrationType = searchParams.get("ty") || ""
+  const urlResult = searchParams.get("r") || "pass"
 
   const [calibration, setCalibration] = useState<Calibration | null>(null)
   const [equipment, setEquipment] = useState<Equipment | null>(null)
@@ -49,6 +57,13 @@ export default function PublicCalibrationPage() {
         return
       }
 
+      // If we have URL parameters, create a basic view from them
+      if (urlTechnician && urlDate && urlEquipmentName && urlCalibrationType) {
+        addDebugInfo("📝 Creating basic view from URL parameters")
+        createBasicViewFromUrlParams()
+        return
+      }
+
       // Show helpful error message
       addDebugInfo("❌ Could not find calibration in local storage")
       setError(
@@ -61,6 +76,53 @@ export default function PublicCalibrationPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const createBasicViewFromUrlParams = () => {
+    setLoadingMethod("URL parameters")
+    addDebugInfo("📝 Creating view from URL parameters")
+
+    // Create a simplified calibration object from URL parameters
+    const simplifiedCalibration = {
+      id: calibrationId,
+      customerId: "url-param",
+      equipmentId: "url-param",
+      type: urlCalibrationType,
+      technician: urlTechnician,
+      date: urlDate,
+      temperature: "N/A",
+      humidity: "N/A",
+      toolsUsed: [],
+      data: { reportNumber: calibrationId.substring(0, 8) },
+      result: urlResult,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as Calibration
+
+    setCalibration(simplifiedCalibration)
+    setEquipment({
+      id: "url-param",
+      name: urlEquipmentName,
+      type: urlCalibrationType as any,
+      serialNumber: "N/A",
+      customerId: "url-param",
+      specifications: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    setCustomer({
+      id: "url-param",
+      name: "N/A",
+      location: "N/A",
+      contact: "N/A",
+      email: "N/A",
+      phone: "N/A",
+      notes: "Limited data available from QR code",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+
+    addDebugInfo("✅ Created basic view from URL parameters")
   }
 
   const tryLoadFromLocalStorage = async (): Promise<boolean> => {
@@ -468,14 +530,23 @@ export default function PublicCalibrationPage() {
                   <CalendarPlus className="h-4 w-4 mr-2" />
                   Add Due Date to Calendar
                 </Button>
-                <Button onClick={downloadPDF} variant="outline" className="w-full">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PDF
-                </Button>
-                <Button onClick={viewFullCertificate} variant="outline" className="w-full">
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  View Full Certificate
-                </Button>
+                {loadingMethod !== "URL parameters" && (
+                  <Button onClick={downloadPDF} variant="outline" className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </Button>
+                )}
+                {loadingMethod !== "URL parameters" && (
+                  <Button onClick={viewFullCertificate} variant="outline" className="w-full">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View Full Certificate
+                  </Button>
+                )}
+                {loadingMethod === "URL parameters" && (
+                  <div className="col-span-2 text-sm text-gray-500 flex items-center justify-center">
+                    <p>Limited view mode. Full certificate available on the device where calibration was performed.</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

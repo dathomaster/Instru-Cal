@@ -28,7 +28,27 @@ export function QRCodeSticker({ calibrationId, technician, date, equipmentName, 
     const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
     const publicUrl = `${baseUrl}/public/calibration/${calibrationId}`
     setQrCodeValue(publicUrl)
-  }, [calibrationId])
+
+    // Store calibration data in localStorage for public access
+    if (typeof window !== "undefined") {
+      const publicCalibrationData = {
+        id: calibrationId,
+        technician,
+        date,
+        equipmentName,
+        calibrationType,
+        timestamp: new Date().toISOString(),
+      }
+
+      try {
+        // Store in localStorage for backup access
+        localStorage.setItem(`public_calibration_${calibrationId}`, JSON.stringify(publicCalibrationData))
+        console.log("✅ Calibration data cached for public access:", calibrationId)
+      } catch (error) {
+        console.error("Failed to cache calibration data:", error)
+      }
+    }
+  }, [calibrationId, technician, date, equipmentName, calibrationType])
 
   if (!isClient) {
     return (

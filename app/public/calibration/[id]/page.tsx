@@ -437,183 +437,13 @@ export default function PublicCalibrationPage() {
     if (!calibration) return
 
     try {
-      if (loadingMethod === "URL parameters") {
-        // Generate a simplified PDF for URL parameter mode
-        generateSimplifiedPDF()
-      } else {
-        // Open the full report for cached data
-        const printUrl = `/calibrations/${calibration.id}/report?print=true`
-        window.open(printUrl, "_blank")
-      }
+      // Open the print-friendly version in a new window
+      const printUrl = `/calibrations/${calibration.id}/report?print=true`
+      window.open(printUrl, "_blank")
     } catch (error) {
       console.error("❌ Error opening PDF:", error)
       alert("Failed to open PDF. Please try again.")
     }
-  }
-
-  const generateSimplifiedPDF = () => {
-    // Create a new window with simplified certificate content
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) {
-      alert("Please allow popups to download the PDF")
-      return
-    }
-
-    const dueDate = new Date(new Date(calibration!.date).getTime() + 365 * 24 * 60 * 60 * 1000)
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Calibration Certificate - ${calibration!.id.substring(0, 8)}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 20px; 
-              line-height: 1.4;
-            }
-            .header { 
-              text-align: center; 
-              border: 3px solid black; 
-              padding: 20px; 
-              margin-bottom: 20px;
-            }
-            .title { 
-              font-size: 24px; 
-              font-weight: bold; 
-              margin-bottom: 10px;
-            }
-            .subtitle { 
-              font-size: 16px; 
-              margin-bottom: 5px;
-            }
-            .info-grid { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin: 20px 0;
-            }
-            .info-item { 
-              margin-bottom: 10px;
-            }
-            .label { 
-              font-weight: bold;
-            }
-            .status-badge {
-              display: inline-block;
-              padding: 4px 8px;
-              border-radius: 4px;
-              font-weight: bold;
-              color: white;
-            }
-            .pass { background-color: #16a34a; }
-            .fail { background-color: #dc2626; }
-            .current { background-color: #16a34a; }
-            .due-soon { background-color: #eab308; }
-            .expired { background-color: #dc2626; }
-            .footer {
-              margin-top: 30px;
-              padding-top: 20px;
-              border-top: 2px solid black;
-              text-align: center;
-              font-size: 12px;
-            }
-            @media print {
-              body { margin: 0; }
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="title">CERTIFICATE OF CALIBRATION</div>
-            <div class="subtitle">
-              ${
-                calibration!.type === "load_cell"
-                  ? "Force Verification utilizing ASTM E74-18"
-                  : "Speed & Displacement Verification utilizing ASTM E2309"
-              }
-            </div>
-            <div class="subtitle">Issued By: Your Calibration Company</div>
-          </div>
-
-          <div class="info-grid">
-            <div>
-              <div class="info-item">
-                <span class="label">Certificate Number:</span> ${calibration!.id.substring(0, 8)}
-              </div>
-              <div class="info-item">
-                <span class="label">Calibration Date:</span> ${new Date(calibration!.date).toLocaleDateString()}
-              </div>
-              <div class="info-item">
-                <span class="label">Due Date:</span> ${dueDate.toLocaleDateString()}
-              </div>
-              <div class="info-item">
-                <span class="label">Technician:</span> ${calibration!.technician}
-              </div>
-            </div>
-            <div>
-              <div class="info-item">
-                <span class="label">Equipment:</span> ${equipment?.name || "N/A"}
-              </div>
-              <div class="info-item">
-                <span class="label">Serial Number:</span> ${equipment?.serialNumber || "N/A"}
-              </div>
-              <div class="info-item">
-                <span class="label">Calibration Type:</span> ${calibration!.type.replace("_", " ")}
-              </div>
-              <div class="info-item">
-                <span class="label">Result:</span> 
-                <span class="status-badge ${calibration!.result}">${calibration!.result.toUpperCase()}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin: 30px 0; padding: 20px; background-color: #f3f4f6; border-radius: 8px;">
-            <h3>Calibration Summary</h3>
-            <p>
-              This certificate confirms that the ${calibration!.type === "load_cell" ? "force measurement" : "speed and displacement"}
-              calibration was performed on <strong>${new Date(calibration!.date).toLocaleDateString()}</strong> by
-              certified technician <strong>${calibration!.technician}</strong> in accordance with ASTM 
-              ${calibration!.type === "load_cell" ? "E74-18" : "E2309"} standards.
-            </p>
-            ${
-              calibration!.result === "pass"
-                ? `<p style="color: #16a34a; font-weight: bold;">✓ The equipment passed all calibration requirements and is certified for use until ${dueDate.toLocaleDateString()}.</p>`
-                : `<p style="color: #dc2626; font-weight: bold;">✗ The equipment did not meet calibration requirements and requires adjustment or repair.</p>`
-            }
-          </div>
-
-          <div class="footer">
-            <p><strong>Certificate Authenticity</strong></p>
-            <p>This certificate can be verified by scanning the QR code or visiting the verification URL.</p>
-            <p>For questions about this calibration, please contact your calibration provider.</p>
-            <p style="margin-top: 20px; font-size: 10px;">
-              Generated from QR code scan • Limited data view • Full certificate available on original device
-            </p>
-          </div>
-
-          <div class="no-print" style="margin-top: 20px; text-align: center;">
-            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; background-color: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">
-              Print/Save as PDF
-            </button>
-            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; background-color: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
-              Close
-            </button>
-          </div>
-
-          <script>
-            // Auto-print after a short delay
-            setTimeout(() => {
-              window.print();
-            }, 1000);
-          </script>
-        </body>
-      </html>
-    `
-
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
   }
 
   const viewFullCertificate = () => {
@@ -701,7 +531,6 @@ export default function PublicCalibrationPage() {
     )
   }
 
-  // Calculate status dynamically (this updates in real-time)
   const dueDate = new Date(new Date(calibration.date).getTime() + 365 * 24 * 60 * 60 * 1000)
   const isExpired = new Date() > dueDate
   const daysUntilDue = Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
@@ -775,14 +604,6 @@ export default function PublicCalibrationPage() {
                       >
                         {isExpired ? "EXPIRED" : daysUntilDue <= 30 ? "DUE SOON" : "CURRENT"}
                       </Badge>
-                      {!isExpired && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          {daysUntilDue > 0 ? `${daysUntilDue} days remaining` : "Due today"}
-                        </p>
-                      )}
-                      {isExpired && (
-                        <p className="text-sm text-red-600 mt-1">Expired {Math.abs(daysUntilDue)} days ago</p>
-                      )}
                     </div>
                   </div>
                   <div>
@@ -846,10 +667,12 @@ export default function PublicCalibrationPage() {
                   <CalendarPlus className="h-4 w-4 mr-2" />
                   Add Due Date to Calendar
                 </Button>
-                <Button onClick={downloadPDF} variant="outline" className="w-full">
-                  <Download className="h-4 w-4 mr-2" />
-                  {loadingMethod === "URL parameters" ? "Download Basic PDF" : "Download PDF"}
-                </Button>
+                {loadingMethod !== "URL parameters" && (
+                  <Button onClick={downloadPDF} variant="outline" className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </Button>
+                )}
                 {loadingMethod !== "URL parameters" && (
                   <Button onClick={viewFullCertificate} variant="outline" className="w-full">
                     <ExternalLink className="h-4 w-4 mr-2" />
@@ -857,7 +680,7 @@ export default function PublicCalibrationPage() {
                   </Button>
                 )}
                 {loadingMethod === "URL parameters" && (
-                  <div className="text-sm text-gray-500 flex items-center justify-center">
+                  <div className="col-span-2 text-sm text-gray-500 flex items-center justify-center">
                     <p>Limited view mode. Full certificate available on the device where calibration was performed.</p>
                   </div>
                 )}

@@ -325,8 +325,8 @@ export function QRCodeSticker({
     )
   }
 
-  // Loading state
-  if (!isClient || isGenerating) {
+  // Loading state - combine the checks
+  if (!isClient || isGenerating || !QRCodeComponent) {
     return (
       <div className="border-2 border-gray-300 p-2 w-48">
         <h3 className="text-sm font-bold text-center mb-2">Calibration Sticker</h3>
@@ -356,11 +356,42 @@ export function QRCodeSticker({
     )
   }
 
+  // Add this check before rendering QRCodeComponent
+  if (!isClient || !QRCodeComponent) {
+    return (
+      <div className="border-2 border-gray-300 p-2 w-48">
+        <h3 className="text-sm font-bold text-center mb-2">Calibration Sticker</h3>
+        <div className="flex items-center justify-center mb-2">
+          <div className="w-32 h-32 border border-gray-200 flex items-center justify-center text-xs text-gray-500">
+            Loading QR Code...
+          </div>
+        </div>
+        <div className="text-xs">
+          <div>
+            <strong>ID:</strong> {calibrationId.substring(0, 8)}...
+          </div>
+          <div>
+            <strong>Tech:</strong> {technician}
+          </div>
+          <div>
+            <strong>Date:</strong> {date}
+          </div>
+          <div>
+            <strong>Equip:</strong> {equipmentName}
+          </div>
+          <div>
+            <strong>Type:</strong> {calibrationType}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="border-2 border-black p-2 w-48">
       <h3 className="text-sm font-bold text-center mb-2">Calibration Sticker</h3>
       <div className="flex items-center justify-center mb-2">
-        {qrCodeValue && QRCodeComponent ? (
+        {qrCodeValue && QRCodeComponent && isClient ? (
           <QRCodeComponent
             value={qrCodeValue}
             size={128}
@@ -370,7 +401,7 @@ export function QRCodeSticker({
           />
         ) : (
           <div className="w-32 h-32 border border-gray-200 flex items-center justify-center text-xs text-gray-500">
-            {QRCodeComponent ? "Generating QR Code..." : "Loading QR Code..."}
+            {isGenerating ? "Generating QR Code..." : "Loading QR Code..."}
           </div>
         )}
       </div>

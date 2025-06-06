@@ -26,6 +26,8 @@ interface Customer {
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     // Load customers from IndexedDB
@@ -34,6 +36,8 @@ export default function CustomersPage() {
 
   const loadCustomers = async () => {
     try {
+      setIsLoading(true)
+      setError(null)
       await calibrationDB.init()
       const customersFromDB = await calibrationDB.getCustomers()
 
@@ -60,6 +64,9 @@ export default function CustomersPage() {
       setCustomers(customersWithCounts)
     } catch (error) {
       console.error("Error loading customers:", error)
+      setError("Failed to load customers. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -106,71 +113,100 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCustomers.map((customer) => (
-            <Card key={customer.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-lg">{customer.name}</CardTitle>
-                  <Badge variant="outline">{customer.equipmentCount} equipment</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <MapPin className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-gray-600">{customer.location}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-gray-400" />
-                  <p className="text-sm text-gray-600">{customer.phone}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-gray-400" />
-                  <p className="text-sm text-gray-600">{customer.email}</p>
-                </div>
-
-                <div className="pt-2">
-                  <p className="text-sm font-medium">Contact: {customer.contact}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Last calibration:{" "}
-                    {customer.lastCalibration === "Never"
-                      ? "Never"
-                      : new Date(customer.lastCalibration).toLocaleDateString()}
-                  </p>
-                </div>
-
-                {customer.notes && (
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-gray-600">{customer.notes}</p>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-4">
-                  <Link href={`/customers/${customer.id}/details`} className="flex-1">
-                    <Button variant="outline" className="w-full">
-                      View Details
-                    </Button>
-                  </Link>
-                  <Link href={`/calibrations/new?customer=${customer.id}`}>
-                    <Button className="flex-1">New Calibration</Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {filteredCustomers.length === 0 && (
+        {isLoading && (
           <div className="text-center py-12">
-            <p className="text-gray-500 mb-4">No customers found</p>
-            <Link href="/customers/new">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Customer
-              </Button>
-            </Link>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="text-gray-500 mt-2">Loading customers...</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+            <p className="text-red-800">{error}</p>
+            <Button onClick={loadCustomers} variant="outline" size="sm" className="mt-2">
+              Try Again
+            </Button>
+          </div>
+        )}
+
+        {!isLoading && !error && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredCustomers.map((customer) => (
+              <Card key={customer.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-lg">{customer.name}</CardTitle>
+                    <Badge variant="outline">{customer.equipmentCount} equipment</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-gray-600">{customer.location}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-gray-400" />
+                    <p className="text-sm text-gray-600">{customer.phone}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                    <p className="text-sm text-gray-600">{customer.email}</p>
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-sm font-medium">Contact: {customer.contact}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Last calibration:{" "}
+                      {customer.lastCalibration === "Never"
+                        ? "Never"
+                        : new Date(customer.lastCalibration).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  {customer.notes && (
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-gray-600">{customer.notes}</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-4">
+                    <Link href={`/customers/${customer.id}/details`} className="flex-1">
+                      <Button variant="outline" className="w-full">
+                        View Details
+                      </Button>
+                    </Link>
+                    <Link href={`/calibrations/new?customer=${customer.id}`}>
+                      <Button className="flex-1">New Calibration</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && !error && filteredCustomers.length === 0 && (
+          <div className="text-center py-12">
+            {customers.length === 0 ? (
+              <>
+                <p className="text-gray-500 mb-4">No customers found. Add your first customer to get started.</p>
+                <Link href="/customers/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Your First Customer
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-500 mb-4">No customers match your search criteria.</p>
+                <Button onClick={() => setSearchTerm("")} variant="outline">
+                  Clear Search
+                </Button>
+              </>
+            )}
           </div>
         )}
       </main>

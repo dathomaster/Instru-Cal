@@ -1,5 +1,5 @@
 // Service Worker for CalibrationPro PWA - Enhanced for full offline functionality
-const CACHE_NAME = "calibration-pro-v2"
+const CACHE_NAME = "calibration-pro-v3"
 const OFFLINE_URL = "/offline"
 
 // Comprehensive list of assets to cache for full offline functionality
@@ -18,6 +18,7 @@ const PRECACHE_ASSETS = [
   "/tools",
   "/tools/new",
   "/upcoming",
+  "/api/health",
   // Add common static assets
   "/_next/static/css/app/layout.css",
   "/_next/static/chunks/webpack.js",
@@ -95,7 +96,13 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Handle static assets and API routes
+  // Handle API requests
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(handleApiRequest(event.request))
+    return
+  }
+
+  // Handle static assets and other resources
   event.respondWith(handleResourceRequest(event.request))
 })
 
@@ -124,6 +131,35 @@ async function handleNavigationRequest(request) {
     // Serve offline page for failed navigation
     const offlineResponse = await caches.match(OFFLINE_URL)
     return offlineResponse || new Response("Offline", { status: 503 })
+  }
+}
+
+// Handle API requests with network-first strategy
+async function handleApiRequest(request) {
+  try {
+    // Try network first for API requests
+    const networkResponse = await fetch(request)
+    if (networkResponse && networkResponse.status === 200) {
+      // Cache successful API responses
+      const cache = await caches.open(CACHE_NAME)
+      cache.put(request, networkResponse.clone())
+      return networkResponse
+    }
+
+    throw new Error("Network response not ok")
+  } catch (error) {
+    console.log("API request failed, trying cache:", error)
+    // Try cache if network fails
+    const cachedResponse = await caches.match(request)
+    if (cachedResponse) {
+      return cachedResponse
+    }
+
+    // Return empty JSON if no cache
+    return new Response(JSON.stringify({ error: "Offline", message: "You are currently offline" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    })
   }
 }
 

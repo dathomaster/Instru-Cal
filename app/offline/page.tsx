@@ -1,109 +1,75 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Wifi, WifiOff, RefreshCw, Home, Database } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { WifiOff, Home, RefreshCw, Database } from "lucide-react"
+import Link from "next/link"
+import { useEffect, useState } from "react"
 
 export default function OfflinePage() {
-  const [isOnline, setIsOnline] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
+  const [pendingItems, setPendingItems] = useState(0)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check initial online status
-    setIsOnline(navigator.onLine)
+    // Try to get sync info from localStorage
+    try {
+      const queue = localStorage.getItem("syncQueue")
+      if (queue) {
+        setPendingItems(JSON.parse(queue).length)
+      }
 
-    // Listen for online/offline events
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
+      const lastSync = localStorage.getItem("lastSyncTime")
+      if (lastSync) {
+        const date = new Date(Number.parseInt(lastSync))
+        setLastSyncTime(date.toLocaleString())
+      }
+    } catch (error) {
+      console.error("Error getting sync info:", error)
     }
   }, [])
 
-  const handleRetry = () => {
-    setRetryCount((prev) => prev + 1)
-    // Try to reload the page
-    window.location.reload()
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4">
-            {isOnline ? <Wifi className="h-16 w-16 text-green-500" /> : <WifiOff className="h-16 w-16 text-red-500" />}
+          <div className="mx-auto bg-amber-100 p-3 rounded-full w-12 h-12 flex items-center justify-center mb-4">
+            <WifiOff className="h-6 w-6 text-amber-600" />
           </div>
-          <CardTitle className="text-2xl">{isOnline ? "Connection Restored!" : "You're Offline"}</CardTitle>
+          <CardTitle className="text-2xl">You're Offline</CardTitle>
+          <CardDescription>
+            Don't worry! The app works offline and your data is safely stored on your device.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="text-center">
-            <Badge variant={isOnline ? "default" : "secondary"} className={isOnline ? "bg-green-600" : ""}>
-              {isOnline ? "Online" : "Offline Mode"}
-            </Badge>
-          </div>
-
-          <div className="text-sm text-gray-600 text-center space-y-2">
-            {isOnline ? (
-              <div>
-                <p>Your internet connection has been restored.</p>
-                <p>You can now sync your offline data.</p>
-              </div>
-            ) : (
-              <div>
-                <p>Don't worry! CalibrationPro works offline.</p>
-                <p>Your data is saved locally and will sync when you're back online.</p>
-              </div>
-            )}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <h3 className="font-medium text-amber-800 flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              Offline Data Status
+            </h3>
+            <div className="mt-2 text-sm text-amber-700">
+              <p>Pending items to sync: {pendingItems}</p>
+              {lastSyncTime && <p>Last synced: {lastSyncTime}</p>}
+            </div>
           </div>
 
           <div className="space-y-2">
-            <h4 className="font-medium text-sm">Available Offline Features:</h4>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Create and edit calibrations
-              </li>
-              <li className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                View existing data
-              </li>
-              <li className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Generate reports
-              </li>
-              <li className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Manage customers & equipment
-              </li>
-            </ul>
-          </div>
+            <Button asChild className="w-full">
+              <Link href="/">
+                <Home className="mr-2 h-4 w-4" />
+                Go to Home
+              </Link>
+            </Button>
 
-          <div className="flex gap-2">
-            <Link href="/" className="flex-1">
-              <Button variant="outline" className="w-full">
-                <Home className="h-4 w-4 mr-2" />
-                Go to Dashboard
-              </Button>
-            </Link>
-            <Button onClick={handleRetry} variant="default" className="flex-1">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry {retryCount > 0 && `(${retryCount})`}
+            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Check Connection
             </Button>
           </div>
 
-          {isOnline && (
-            <div className="text-center">
-              <p className="text-sm text-green-600">✅ Ready to sync your offline changes!</p>
-            </div>
-          )}
+          <div className="text-center text-sm text-gray-500 mt-4">
+            <p>You can continue using the app while offline.</p>
+            <p>Your changes will sync automatically when you're back online.</p>
+          </div>
         </CardContent>
       </Card>
     </div>

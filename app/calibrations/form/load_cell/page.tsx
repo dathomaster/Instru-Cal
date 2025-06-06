@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Save, Printer, CheckCircle, XCircle, ArrowUp, ArrowDown } from "lucide-react"
+import { ArrowLeft, Save, Printer, CheckCircle, XCircle, ArrowUp, ArrowDown, AlertCircle } from "lucide-react"
 import { calibrationDB, type CalibrationTool } from "@/lib/db"
 
 interface LoadCellPoint {
@@ -46,6 +46,12 @@ export default function LoadCellCalibrationPage() {
     capacity: 1000,
     toolsUsed: [] as string[],
   })
+
+  // Save state management
+  const [isSaved, setIsSaved] = useState(false)
+  const [savedCalibrationId, setSavedCalibrationId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Tension runs
   const [tensionRun1, setTensionRun1] = useState<LoadCellPoint[]>([
@@ -367,6 +373,22 @@ export default function LoadCellCalibrationPage() {
     loadTools()
   }, [])
 
+  // Reset save state when data changes
+  useEffect(() => {
+    if (isSaved) {
+      setIsSaved(false)
+      setSavedCalibrationId(null)
+      setSaveError(null)
+    }
+  }, [
+    calibrationData,
+    tensionRun1,
+    tensionRun2,
+    compressionRun1,
+    compressionRun2,
+    // Don't include isSaved in dependencies to avoid infinite loop
+  ])
+
   const loadTools = async () => {
     try {
       console.log("🔧 Loading calibration tools...")
@@ -594,6 +616,19 @@ export default function LoadCellCalibrationPage() {
   const saveCalibration = async () => {
     try {
       console.log("🔄 Starting calibration save process...")
+      setIsSaving(true)
+      setSaveError(null)
+
+      // Validation
+      if (!calibrationData.technician.trim()) {
+        throw new Error("Technician name is required")
+      }
+      if (!calibrationData.date) {
+        throw new Error("Date is required")
+      }
+      if (calibrationData.toolsUsed.length === 0) {
+        throw new Error("At least one calibration tool must be selected")
+      }
 
       // Ensure database is initialized
       await calibrationDB.init()
@@ -645,24 +680,24 @@ export default function LoadCellCalibrationPage() {
       console.log("✅ Calibration saved successfully with ID:", savedCalibration.id)
 
       // Verify it was saved by trying to retrieve it immediately
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 500))
       const retrievedCalibration = await calibrationDB.getCalibrationById(savedCalibration.id)
 
       if (retrievedCalibration) {
         console.log("✅ Calibration verified in database:", retrievedCalibration.id)
+        setIsSaved(true)
+        setSavedCalibrationId(savedCalibration.id)
         return savedCalibration.id
       } else {
         console.error("❌ Calibration not found after save!")
-        const allCalibrations = await calibrationDB.getAllCalibrations()
-        console.log(
-          "Available calibrations:",
-          allCalibrations.map((c) => ({ id: c.id, reportNumber: c.data?.reportNumber })),
-        )
-        return null
+        throw new Error("Calibration was saved but could not be verified. Please try again.")
       }
     } catch (error) {
       console.error("❌ Error saving calibration:", error)
+      setSaveError(error instanceof Error ? error.message : "Unknown error occurred")
       return null
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -670,56 +705,45 @@ export default function LoadCellCalibrationPage() {
     try {
       console.log("🖨️ Starting print process...")
 
-      const calibrationId = await saveCalibration()
+      if (!isSaved || !savedCalibrationId) {
+        console.log("📝 Calibration not saved yet, saving first...")
+        const calibrationId = await saveCalibration()
 
-      if (!calibrationId) {
-        alert("Error saving calibration. Please try again.")
-        return
+        if (!calibrationId) {
+          return // Error already handled in saveCalibration
+        }
       }
 
-      console.log("✅ Calibration saved with ID:", calibrationId)
+      console.log("✅ Calibration is saved, proceeding to print...")
 
-      // Wait longer to ensure database write is complete
+      // Wait a bit longer to ensure database write is complete
       console.log("⏳ Waiting for database to settle...")
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
       // Verify the calibration exists before navigating
       try {
-        const savedCalibration = await calibrationDB.getCalibrationById(calibrationId)
+        const savedCalibration = await calibrationDB.getCalibrationById(savedCalibrationId!)
         if (savedCalibration) {
           console.log("✅ Calibration verified before print:", savedCalibration.id)
           // Navigate to the certificate page with auto-print
           console.log("🔄 Redirecting to certificate page...")
-          window.location.href = `/calibrations/${calibrationId}/report?print=true`
+          window.location.href = `/calibrations/${savedCalibrationId}/report?print=true`
         } else {
           console.error("❌ Calibration not found after save, cannot print")
-          alert("Error: Calibration was saved but cannot be found for printing. Please try again.")
+          setSaveError("Calibration was saved but cannot be found for printing. Please try again.")
         }
       } catch (verifyError) {
         console.error("❌ Error verifying calibration:", verifyError)
-        alert("Error verifying calibration for print. Please try again.")
+        setSaveError("Error verifying calibration for print. Please try again.")
       }
     } catch (error) {
       console.error("❌ Error in print process:", error)
-      alert("Error preparing calibration for print. Please try again.")
+      setSaveError("Error preparing calibration for print. Please try again.")
     }
   }
 
   const handleSave = async () => {
-    try {
-      console.log("💾 Starting save process...")
-
-      const calibrationId = await saveCalibration()
-
-      if (calibrationId) {
-        alert("Calibration saved successfully!")
-      } else {
-        alert("Error saving calibration. Please try again.")
-      }
-    } catch (error) {
-      console.error("❌ Error saving calibration:", error)
-      alert("Error saving calibration. Please try again.")
-    }
+    await saveCalibration()
   }
 
   const getErrorColor = (error: number) => {
@@ -728,6 +752,13 @@ export default function LoadCellCalibrationPage() {
     if (absError <= 0.2) return "bg-yellow-100"
     if (absError <= 0.5) return "bg-orange-100"
     return "bg-red-100"
+  }
+
+  // Check if form is ready to save
+  const isFormValid = () => {
+    return (
+      calibrationData.technician.trim() !== "" && calibrationData.date !== "" && calibrationData.toolsUsed.length > 0
+    )
   }
 
   const LoadCellRunTable = ({
@@ -887,18 +918,59 @@ export default function LoadCellCalibrationPage() {
                   {overallResult.toUpperCase()}
                 </Badge>
               )}
-              <Button onClick={handleSave} variant="outline">
+
+              {isSaved && savedCalibrationId && (
+                <Badge variant="default" className="bg-green-600">
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  SAVED
+                </Badge>
+              )}
+
+              <Button onClick={handleSave} variant="outline" disabled={isSaving || !isFormValid()}>
                 <Save className="h-4 w-4 mr-2" />
-                Save
+                {isSaving ? "Saving..." : "Save"}
               </Button>
-              <Button onClick={handlePrint}>
+
+              <Button onClick={handlePrint} disabled={isSaving || (!isSaved && !isFormValid())}>
                 <Printer className="h-4 w-4 mr-2" />
-                Print Report
+                {!isSaved ? "Save & Print Report" : "Print Report"}
               </Button>
             </div>
           </div>
         </div>
       </header>
+
+      {/* Save Status Alert */}
+      {saveError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Save Error</h3>
+                <p className="mt-1 text-sm text-red-700">{saveError}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Form Validation Alert */}
+      {!isFormValid() && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <div className="flex">
+              <AlertCircle className="h-5 w-5 text-yellow-400" />
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">Complete Required Fields</h3>
+                <p className="mt-1 text-sm text-yellow-700">
+                  Please fill in the technician name, date, and select at least one calibration tool before saving.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -909,22 +981,24 @@ export default function LoadCellCalibrationPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="technician">Technician</Label>
+                <Label htmlFor="technician">Technician *</Label>
                 <Input
                   id="technician"
                   value={calibrationData.technician}
                   onChange={(e) => setCalibrationData((prev) => ({ ...prev, technician: e.target.value }))}
                   placeholder="Enter technician name"
+                  className={!calibrationData.technician.trim() ? "border-red-300" : ""}
                 />
               </div>
 
               <div>
-                <Label htmlFor="date">Date</Label>
+                <Label htmlFor="date">Date *</Label>
                 <Input
                   id="date"
                   type="date"
                   value={calibrationData.date}
                   onChange={(e) => setCalibrationData((prev) => ({ ...prev, date: e.target.value }))}
+                  className={!calibrationData.date ? "border-red-300" : ""}
                 />
               </div>
 
@@ -959,7 +1033,7 @@ export default function LoadCellCalibrationPage() {
               </div>
 
               <div>
-                <Label htmlFor="tools">Calibration Tools Used</Label>
+                <Label htmlFor="tools">Calibration Tools Used *</Label>
                 {availableTools.length > 0 ? (
                   <Select
                     value={calibrationData.toolsUsed[0] || ""}
@@ -968,7 +1042,7 @@ export default function LoadCellCalibrationPage() {
                       setCalibrationData((prev) => ({ ...prev, toolsUsed: value ? [value] : [] }))
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={calibrationData.toolsUsed.length === 0 ? "border-red-300" : ""}>
                       <SelectValue placeholder="Select calibration tool" />
                     </SelectTrigger>
                     <SelectContent>

@@ -15,5 +15,8 @@ export const createServerSupabaseClient = () => {
   return createClient(supabaseUrl, supabaseServiceKey)
 }
 
+// Create and export the default client instance
+export const supabase = createClientSupabaseClient()
+
 // Export createClient for direct use in API routes
 export { createClient }

@@ -4,7 +4,6 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { AuthProvider } from "@/components/auth-provider"
 import { QueryProvider } from "@/components/query-provider"
-import { ConnectionStatus } from "@/components/connection-status"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,7 +24,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className}>
         <QueryProvider>
           <AuthProvider>{children}</AuthProvider>
-          <ConnectionStatus />
         </QueryProvider>
         <script
           dangerouslySetInnerHTML={{

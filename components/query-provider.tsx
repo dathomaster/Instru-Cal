@@ -1,23 +1,35 @@
 "use client"
 
+import type React from "react"
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
-import { useState, type ReactNode } from "react"
+import { useState } from "react"
 
-export function QueryProvider({ children }: { children: ReactNode }) {
+export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Retry failed queries 1 time
-            retry: 1,
-            // Keep data fresh for 5 minutes
-            staleTime: 5 * 60 * 1000,
-            // Show stale data while fetching
+            staleTime: 60 * 1000, // 1 minute
+            retry: (failureCount, error) => {
+              // Don't retry on 4xx errors
+              if (error && typeof error === "object" && "status" in error) {
+                const status = error.status as number
+                if (status >= 400 && status < 500) {
+                  return false
+                }
+              }
+              return failureCount < 3
+            },
             refetchOnWindowFocus: false,
-            // Handle offline scenarios gracefully
-            networkMode: "always",
+            // Enable offline support
+            networkMode: "offlineFirst",
+          },
+          mutations: {
+            retry: 1,
+            networkMode: "offlineFirst",
           },
         },
       }),

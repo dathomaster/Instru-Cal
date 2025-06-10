@@ -1084,18 +1084,25 @@ export const calibrationDB = new CalibrationDB()
 
 // Initialize the database when the module loads
 if (typeof window !== "undefined") {
-  calibrationDB
-    .init()
-    .then(() => {
-      console.log("🚀 Database initialized, loading sample data...")
-      return calibrationDB.initializeSampleData()
-    })
-    .then(() => {
-      console.log("🎉 App ready for offline use!")
-    })
-    .catch((error) => {
-      console.error("💥 Failed to initialize app:", error)
-    })
+  // Add a small delay to ensure the DOM is ready
+  setTimeout(() => {
+    calibrationDB
+      .init()
+      .then(() => {
+        console.log("🚀 Database initialized, loading sample data...")
+        return calibrationDB.initializeSampleData()
+      })
+      .then(() => {
+        console.log("🎉 App ready for offline use!")
+        // Dispatch a custom event to notify components that the DB is ready
+        window.dispatchEvent(new CustomEvent("dbReady"))
+      })
+      .catch((error) => {
+        console.error("💥 Failed to initialize app:", error)
+        // Still dispatch the event so the app doesn't hang
+        window.dispatchEvent(new CustomEvent("dbReady"))
+      })
+  }, 100)
 }
 
 // Add this line to export calibrationDB as db as well

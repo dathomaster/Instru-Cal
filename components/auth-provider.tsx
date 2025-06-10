@@ -2,135 +2,109 @@
 
 import type React from "react"
 
-import { createContext, useContext, useEffect, useState, useRef } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
+import type { User } from "@supabase/supabase-js"
 import { createClientSupabaseClient } from "@/lib/supabase"
-import { LoginForm } from "@/components/login-form"
-import { usePathname } from "next/navigation"
-
-interface Employee {
-  id: string
-  username: string
-  is_active: boolean
-  last_sign_in_at?: string
-}
 
 interface AuthContextType {
-  user: Employee | null
-  isAdmin: boolean
+  user: User | null
   loading: boolean
+  isOffline: boolean
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
-
-// List of paths that don't require authentication
-const PUBLIC_PATHS = ["/public", "/api/health"]
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  isOffline: false,
+  signOut: async () => {},
+})
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<Employee | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isOffline, setIsOffline] = useState(false)
   const supabase = createClientSupabaseClient()
-  const initialized = useRef(false)
-  const pathname = usePathname()
-
-  // Check if current path is public
-  const isPublicPath = PUBLIC_PATHS.some((path) => pathname?.startsWith(path))
 
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
+    // Check if we're offline
+    const checkOfflineStatus = () => {
+      const offline = !navigator.onLine
+      setIsOffline(offline)
 
-    const initAuth = async () => {
-      try {
-        // Skip auth check for public paths
-        if (isPublicPath) {
-          setLoading(false)
-          return
-        }
+      if (offline) {
+        // In offline mode, create a mock user to allow app functionality
+        const offlineUser = {
+          id: "offline-user",
+          email: "offline@local.app",
+          user_metadata: { name: "Offline User" },
+        } as User
 
-        // Check for admin session first
-        const adminUser = localStorage.getItem("adminUser")
-        const isAdminFlag = localStorage.getItem("isAdmin")
-
-        if (adminUser && isAdminFlag === "true") {
-          setUser(JSON.parse(adminUser))
-          setIsAdmin(true)
-          setLoading(false)
-          return
-        }
-
-        // Check for employee session
-        const employeeUser = localStorage.getItem("employeeUser")
-        if (employeeUser) {
-          setUser(JSON.parse(employeeUser))
-          setIsAdmin(false)
-          setLoading(false)
-          return
-        }
-
-        // No session found
-        setUser(null)
-        setIsAdmin(false)
-      } catch (error) {
-        console.error("Auth initialization error:", error)
-        // Clear any potentially corrupted session data
-        localStorage.removeItem("adminUser")
-        localStorage.removeItem("isAdmin")
-        localStorage.removeItem("employeeUser")
-        setUser(null)
-        setIsAdmin(false)
-      } finally {
+        setUser(offlineUser)
         setLoading(false)
+        return
       }
     }
 
-    initAuth()
-  }, [isPublicPath])
+    // Initial check
+    checkOfflineStatus()
+
+    // Listen for online/offline events
+    window.addEventListener("online", checkOfflineStatus)
+    window.addEventListener("offline", checkOfflineStatus)
+
+    // Only try Supabase auth if we're online
+    if (navigator.onLine) {
+      // Get initial session
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (error) {
+          console.error("Auth error:", error)
+        }
+        setUser(session?.user ?? null)
+        setLoading(false)
+      })
+
+      // Listen for auth changes
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange(async (event, session) => {
+        setUser(session?.user ?? null)
+        setLoading(false)
+      })
+
+      return () => {
+        subscription.unsubscribe()
+        window.removeEventListener("online", checkOfflineStatus)
+        window.removeEventListener("offline", checkOfflineStatus)
+      }
+    }
+
+    return () => {
+      window.removeEventListener("online", checkOfflineStatus)
+      window.removeEventListener("offline", checkOfflineStatus)
+    }
+  }, [])
 
   const signOut = async () => {
-    try {
-      // Clear all sessions
-      localStorage.removeItem("adminUser")
-      localStorage.removeItem("isAdmin")
-      localStorage.removeItem("employeeUser")
-
+    if (isOffline) {
+      // In offline mode, just clear the user
       setUser(null)
-      setIsAdmin(false)
+      return
+    }
 
-      // Force reload to clear any cached state
-      window.location.href = "/"
+    try {
+      await supabase.auth.signOut()
     } catch (error) {
       console.error("Sign out error:", error)
     }
   }
 
-  // For public paths, render children directly without auth check
-  if (isPublicPath) {
-    return <>{children}</>
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <LoginForm />
-  }
-
-  return <AuthContext.Provider value={{ user, isAdmin, loading, signOut }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, isOffline, signOut }}>{children}</AuthContext.Provider>
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext)
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context

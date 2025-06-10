@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Save, Printer, TrendingUp, TrendingDown } from "lucide-react"
-import { calibrationDB } from "@/lib/db"
+import { calibrationDB, type CalibrationTool } from "@/lib/db"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface SpeedRun {
   setSpeed: number
@@ -43,6 +44,9 @@ export default function SpeedDisplacementCalibrationPage() {
   const customerId = searchParams.get("customer")
   const equipmentId = searchParams.get("equipment")
 
+  const [availableTools, setAvailableTools] = useState<CalibrationTool[]>([])
+
+  // Update the calibrationData state to include toolsUsed:
   const [calibrationData, setCalibrationData] = useState({
     technician: "",
     date: new Date().toISOString().split("T")[0],
@@ -50,6 +54,7 @@ export default function SpeedDisplacementCalibrationPage() {
     humidity: "",
     speedTolerance: 2.0,
     displacementTolerance: 1.0,
+    toolsUsed: [] as string[],
   })
 
   // Speed runs - UP and DOWN for Run 1 and Run 2
@@ -339,6 +344,43 @@ export default function SpeedDisplacementCalibrationPage() {
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
+  useEffect(() => {
+    loadTools()
+  }, [])
+
+  const loadTools = async () => {
+    try {
+      console.log("🔧 Loading calibration tools...")
+      await calibrationDB.init()
+      const allTools = await calibrationDB.getTools()
+      console.log("All tools found:", allTools)
+
+      const displacementTools = allTools.filter((tool) => tool.type === "displacement_tool")
+      console.log("Displacement tools found:", displacementTools)
+
+      const activeTools = displacementTools.filter((tool) => {
+        const nextDate = new Date(tool.nextCalibrationDate)
+        const now = new Date()
+        const isActive = nextDate >= now
+        console.log(`Tool ${tool.name}: Next cal ${tool.nextCalibrationDate}, Active: ${isActive}`)
+        return isActive
+      })
+
+      console.log("Active displacement tools:", activeTools)
+      setAvailableTools(activeTools)
+    } catch (error) {
+      console.error("Error loading tools:", error)
+      // Fallback: try to get any tools if the specific query fails
+      try {
+        const allTools = await calibrationDB.getTools()
+        setAvailableTools(allTools.filter((tool) => tool.type === "displacement_tool"))
+      } catch (fallbackError) {
+        console.error("Fallback tool loading failed:", fallbackError)
+        setAvailableTools([])
+      }
+    }
+  }
+
   // Calculate speed run data with debouncing
   const calculateSpeedRun = useCallback((run: SpeedRun[], index: number, field: string, value: string) => {
     const newRun = [...run]
@@ -549,6 +591,7 @@ export default function SpeedDisplacementCalibrationPage() {
         synced: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        toolsUsed: calibrationData.toolsUsed,
       }
 
       // Wait for the save to complete
@@ -594,6 +637,7 @@ export default function SpeedDisplacementCalibrationPage() {
         synced: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        toolsUsed: calibrationData.toolsUsed,
       }
 
       await calibrationDB.addCalibration(calibration)
@@ -922,6 +966,37 @@ export default function SpeedDisplacementCalibrationPage() {
                   onChange={(e) => setCalibrationData((prev) => ({ ...prev, humidity: e.target.value }))}
                   placeholder="45"
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="tools">Calibration Tools Used</Label>
+                {availableTools.length > 0 ? (
+                  <Select
+                    value={calibrationData.toolsUsed[0] || ""}
+                    onValueChange={(value) => {
+                      console.log("Tool selected:", value)
+                      setCalibrationData((prev) => ({ ...prev, toolsUsed: value ? [value] : [] }))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select calibration tool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTools.map((tool) => (
+                        <SelectItem key={tool.id} value={tool.id}>
+                          {tool.name} - {tool.serialNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="text-sm text-gray-500 p-2 border rounded">
+                    No active calibration tools available. Please add tools in the Tools section.
+                  </div>
+                )}
+                {availableTools.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{availableTools.length} active tool(s) available</p>
+                )}
               </div>
 
               <div>

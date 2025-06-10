@@ -3,8 +3,6 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { AuthProvider } from "@/components/auth-provider"
-import { QueryProvider } from "@/components/query-provider"
-import { OfflineDetector } from "@/components/offline-detector"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -23,12 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
       </head>
       <body className={inter.className}>
-        <QueryProvider>
-          <AuthProvider>
-            {children}
-            <OfflineDetector />
-          </AuthProvider>
-        </QueryProvider>
+        <AuthProvider>{children}</AuthProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `

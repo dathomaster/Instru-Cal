@@ -11,9 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Save, AlertCircle, Info } from "lucide-react"
+import { ArrowLeft, Save } from "lucide-react"
 import { calibrationDB, type Customer, type Equipment } from "@/lib/db"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function NewEquipmentPage() {
   const router = useRouter()
@@ -22,8 +21,6 @@ export default function NewEquipmentPage() {
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState({
     name: "",
     type: "" as "load_cell" | "speed_displacement" | "",
@@ -51,29 +48,14 @@ export default function NewEquipmentPage() {
     }
   }
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
-
-    if (!formData.name.trim()) newErrors.name = "Equipment name is required"
-    if (!formData.type) newErrors.type = "Equipment type is required"
-    if (!formData.customerId) newErrors.customerId = "Customer is required"
-    if (!formData.serialNumber.trim()) newErrors.serialNumber = "Serial number is required"
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) {
-      // Scroll to the first error
-      const firstErrorField = Object.keys(errors)[0]
-      document.getElementById(firstErrorField)?.focus()
+    if (!formData.name || !formData.type || !formData.customerId) {
+      alert("Please fill in all required fields")
       return
     }
 
-    setIsSubmitting(true)
     try {
       const newEquipment: Equipment = {
         id: Date.now().toString(),
@@ -96,18 +78,11 @@ export default function NewEquipmentPage() {
     } catch (error) {
       console.error("Error saving equipment:", error)
       alert("Error saving equipment. Please try again.")
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-
-    // Clear error when user types
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }))
-    }
   }
 
   if (loading) {
@@ -145,11 +120,9 @@ export default function NewEquipmentPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <Label htmlFor="customer" className="flex items-center">
-                    Customer <span className="text-red-500 ml-1">*</span>
-                  </Label>
+                  <Label htmlFor="customer">Customer *</Label>
                   <Select value={formData.customerId} onValueChange={(value) => handleChange("customerId", value)}>
-                    <SelectTrigger id="customerId" className={errors.customerId ? "border-red-500" : ""}>
+                    <SelectTrigger>
                       <SelectValue placeholder="Select a customer" />
                     </SelectTrigger>
                     <SelectContent>
@@ -160,40 +133,23 @@ export default function NewEquipmentPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.customerId && (
-                    <p className="text-red-500 text-sm mt-1 flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.customerId}
-                    </p>
-                  )}
                 </div>
 
                 <div>
-                  <Label htmlFor="name" className="flex items-center">
-                    Equipment Name <span className="text-red-500 ml-1">*</span>
-                  </Label>
+                  <Label htmlFor="name">Equipment Name *</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => handleChange("name", e.target.value)}
                     placeholder="e.g., LC-500 Load Cell"
                     required
-                    className={errors.name ? "border-red-500" : ""}
                   />
-                  {errors.name && (
-                    <p className="text-red-500 text-sm mt-1 flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.name}
-                    </p>
-                  )}
                 </div>
 
                 <div>
-                  <Label htmlFor="type" className="flex items-center">
-                    Equipment Type <span className="text-red-500 ml-1">*</span>
-                  </Label>
+                  <Label htmlFor="type">Equipment Type *</Label>
                   <Select value={formData.type} onValueChange={(value) => handleChange("type", value)}>
-                    <SelectTrigger id="type" className={errors.type ? "border-red-500" : ""}>
+                    <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -201,32 +157,16 @@ export default function NewEquipmentPage() {
                       <SelectItem value="speed_displacement">Speed & Displacement</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.type && (
-                    <p className="text-red-500 text-sm mt-1 flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.type}
-                    </p>
-                  )}
                 </div>
 
                 <div>
-                  <Label htmlFor="serialNumber" className="flex items-center">
-                    Serial Number <span className="text-red-500 ml-1">*</span>
-                  </Label>
+                  <Label htmlFor="serialNumber">Serial Number</Label>
                   <Input
                     id="serialNumber"
                     value={formData.serialNumber}
                     onChange={(e) => handleChange("serialNumber", e.target.value)}
                     placeholder="e.g., LC500-2024-001"
-                    required
-                    className={errors.serialNumber ? "border-red-500" : ""}
                   />
-                  {errors.serialNumber && (
-                    <p className="text-red-500 text-sm mt-1 flex items-center">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {errors.serialNumber}
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -261,22 +201,15 @@ export default function NewEquipmentPage() {
                 </div>
               </div>
 
-              <Alert className="bg-blue-50 border-blue-200">
-                <Info className="h-4 w-4 text-blue-800" />
-                <AlertDescription className="text-blue-800">
-                  All fields marked with <span className="text-red-500">*</span> are required.
-                </AlertDescription>
-              </Alert>
-
               <div className="flex gap-4 pt-6">
                 <Link href="/equipment" className="flex-1">
                   <Button type="button" variant="outline" className="w-full">
                     Cancel
                   </Button>
                 </Link>
-                <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                <Button type="submit" className="flex-1">
                   <Save className="h-4 w-4 mr-2" />
-                  {isSubmitting ? "Saving..." : "Save Equipment"}
+                  Save Equipment
                 </Button>
               </div>
             </form>

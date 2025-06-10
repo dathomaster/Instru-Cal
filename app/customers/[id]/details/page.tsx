@@ -197,7 +197,6 @@ export default function CustomerDetailPage() {
                       id="location"
                       value={editData.location}
                       onChange={(e) => setEditData((prev) => ({ ...prev, location: e.target.value }))}
-                      placeholder="Enter full address manually"
                     />
                   ) : (
                     <div className="flex items-start gap-2">

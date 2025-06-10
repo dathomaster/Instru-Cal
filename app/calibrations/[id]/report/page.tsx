@@ -142,16 +142,6 @@ export default function CalibrationDetailPage() {
           })),
         )
         foundCalibration = allCalibrations.find((cal) => cal.id === calibrationId)
-
-        // If still not found, try to find by report number or similar ID
-        if (!foundCalibration) {
-          foundCalibration = allCalibrations.find(
-            (cal) =>
-              cal.data?.reportNumber === calibrationId ||
-              cal.id.includes(calibrationId) ||
-              calibrationId.includes(cal.id),
-          )
-        }
       }
 
       if (foundCalibration) {
@@ -187,17 +177,7 @@ export default function CalibrationDetailPage() {
         }
       } else {
         console.error("❌ Calibration not found with ID:", calibrationId)
-
-        // Try to provide helpful suggestions
-        const allCalibrations = await calibrationDB.getAllCalibrations()
-        if (allCalibrations.length === 0) {
-          setError(`No calibrations found in the database. Please add some calibrations first.`)
-        } else {
-          const recentCalibrations = allCalibrations.slice(0, 5)
-          setError(
-            `Calibration with ID "${calibrationId}" not found. Available calibrations: ${recentCalibrations.map((c) => c.id).join(", ")}`,
-          )
-        }
+        setError(`Calibration with ID "${calibrationId}" not found.`)
       }
     } catch (error) {
       console.error("❌ Error loading calibration:", error)
